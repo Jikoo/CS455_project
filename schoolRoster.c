@@ -7,6 +7,22 @@ typedef enum {
     STUDENT
 } Role;
 
+typedef enum {
+    MATH,
+    SCIENCE,
+    ENGLISH,
+    READING,
+    WRITING
+} Department;
+
+struct STUDENT {
+    char grade;
+};
+
+struct STAFF {
+    Department department;
+};
+
 typedef struct {
     char street[50];
     char city[50];
