@@ -60,11 +60,11 @@ typedef struct {
 
 struct person {
     Name name;
+    Date date_of_birth;
     int age;
     char gender;
     int phone_number;
     char email[50];
-    char date_of_birth[11];
     Role role;
     Address address;
 };
