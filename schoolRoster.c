@@ -52,9 +52,64 @@ typedef struct {
     char last_name[25];
 } Name;
 
+typedef struct {
+    int month;
+    int day;
+    int year;
+} Date;
+
 struct person {
     Name name;
     int age;
+    char gender;
+    int phone_number;
+    char email[50];
+    char date_of_birth[11];
     Role role;
     Address address;
 };
+
+/* Function to display options */
+void displayOptions() {
+    printf("1) Would you like to add, edit, or delete a student? \n");
+    printf("2) Would you like to add, edit, or delete a teacher? \n");
+    printf("3) Would you like to add, edit, or delete a staff member? \n");
+    printf("4) Would you like to enter display mode? \n");
+    printf("5) Would you like to enter search mode? \n");
+}
+
+/* Write to file */
+
+/* Function to display all */
+
+/* Search Function */
+
+int main() {
+    FILE *filePointer;
+
+    filePointer = fopen("schoolRoster.txt", "w");
+
+    if (filePointer == NULL) {
+        printf("File failed to open.");
+        return 1;
+    }
+
+    char options;
+    printf("Welcome to the school roster! Would you like to see the options? (y/n)");
+    scanf("%c", &options);
+
+    if (options == 'y') {
+        displayOptions();
+    }
+
+    int selectedOption;
+
+    /*switch (selectedOption) {
+        case 1:
+
+    }*/
+
+    fclose(filePointer);
+
+    return 0;
+}
