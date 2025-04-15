@@ -15,12 +15,28 @@ typedef enum {
     WRITING
 } Department;
 
+struct TEACHER {
+    int salary;
+    Department department;
+};
+
 struct STUDENT {
     char grade;
 };
 
+typedef enum {
+    SCHOOL_COUNSELOR,
+    DEAN,
+    PRINCIPAL,
+    ASSISTANT_PRINCIPAL,
+    JANITOR,
+    LIBRARIAN,
+    ATHLETICS_DIRECTOR
+} Position;
+
 struct STAFF {
-    Department department;
+    int salary;
+    Position position;
 };
 
 typedef struct {
@@ -42,6 +58,3 @@ struct person {
     Role role;
     Address address;
 };
-
-
-
