@@ -41,6 +41,7 @@ struct STAFF {
 
 typedef struct {
     char street[50];
+    char apartment[10];
     char city[50];
     char state[3]; // 2-Letter state code and null terminator
     char zip[10];
@@ -62,7 +63,7 @@ struct Person {
     Name name;
     Date date_of_birth;
     int age;
-    char gender;
+    char gender[30];
     int phone_number;
     char email[50];
     char password[30];
@@ -88,16 +89,6 @@ void writeToRoster(Role role) {
 
     struct Person entry;
 
-    if (role == STUDENT) {
-        entry.role = STUDENT;
-    }
-    if (role == TEACHER) {
-        entry.role = TEACHER;
-    }
-    if (role == STAFF) {
-        entry.role = STAFF;
-    }
-
     printf("Please enter the first name: ");
     scanf("%s", entry.name.first_name);
 
@@ -106,6 +97,53 @@ void writeToRoster(Role role) {
 
     printf("Please enter the last name: ");
     scanf("%s", entry.name.last_name);
+
+    /* Need to process these entries */
+    printf("Please enter their month of birth (1-12): ");
+    scanf("%d", &entry.date_of_birth.month);
+
+    printf("Please enter their day of birth (1-31): ");
+    scanf("%d", &entry.date_of_birth.day);
+
+    printf("Please enter their year of birth: ");
+    scanf("%d", &entry.date_of_birth.year);
+
+    /* Should the age be calculated based on entry? */
+
+    printf("Gender: ");
+    scanf("%c", entry.gender);
+
+    /* Phone number check? */
+    printf("Phone number: ");
+    scanf("%d", &entry.phone_number);
+
+    printf("Email: ");
+    scanf("%c", entry.email);
+
+    printf("Street address: ");
+    scanf("%c", entry.address.street);
+
+    printf("Apartment number (If applicable): ");
+    scanf("%c", entry.address.apartment);
+
+    printf("City: ");
+    scanf("%c", entry.address.city);
+
+    /* Check for this? */
+    printf("State (two letter code): ");
+    scanf("%c", entry.address.state);
+
+
+    if (role == STUDENT) {
+        entry.role = STUDENT;
+        
+    }
+    if (role == TEACHER) {
+        entry.role = TEACHER;
+    }
+    if (role == STAFF) {
+        entry.role = STAFF;
+    }    
 }
 
 /* Function to display options */
@@ -129,12 +167,15 @@ void displayOptions() {
                 break;
             case 3:
                 printf("Entering student editor.\n");
+                writeToRoster( STUDENT);
                 break;
             case 4:
                 printf("Entering teacher editor.\n");
+                writeToRoster(TEACHER);
                 break;
             case 5:
                 printf("Entering staff editor.\n");
+                writeToRoster(STAFF);
                 break;
             default:
                 printf("The option entered was invalid, please try again.\n");
