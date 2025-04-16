@@ -65,17 +65,40 @@ struct person {
     char gender;
     int phone_number;
     char email[50];
+    char password[30];
     Role role;
     Address address;
 };
 
+/* Add to roster */
+
 /* Function to display options */
 void displayOptions() {
-    printf("1) Would you like to add, edit, or delete a student? \n");
-    printf("2) Would you like to add, edit, or delete a teacher? \n");
-    printf("3) Would you like to add, edit, or delete a staff member? \n");
-    printf("4) Would you like to enter display mode? \n");
-    printf("5) Would you like to enter search mode? \n");
+    printf("1) Would you like to enter display mode? \n");
+    printf("2) Would you like to enter search mode? \n");
+    printf("3) Would you like to add, edit, or delete a student? \n");
+    printf("4) Would you like to add, edit, or delete a teacher? \n");
+    printf("5) Would you like to add, edit, or delete a staff member? \n");
+
+    int selectedOption;
+
+    switch (selectedOption) {
+        case 1:
+            printf("Entering display mode.\n");
+            break;
+        case 2:
+            printf("Entering search mode.\n");
+            break;
+        case 3:
+            printf("Entering student editor.\n");
+            break;
+        case 4:
+            printf("Entering teacher editor.\n");
+            break;
+        case 5:
+            printf("Entering staff editor.\n");
+            break;
+    }
 }
 
 /* Write to file */
@@ -93,21 +116,18 @@ int main() {
         printf("File failed to open.");
         return 1;
     }
+    printf("Welcome to the school roster! Please Log in.\n");
+    /*Log in function goes here*/
 
     char options;
-    printf("Welcome to the school roster! Would you like to see the options? (y/n)");
+    printf("Would you like to see the options? (y/n) ");
     scanf("%c", &options);
 
     if (options == 'y') {
         displayOptions();
     }
 
-    int selectedOption;
-
-    /*switch (selectedOption) {
-        case 1:
-
-    }*/
+    
 
     fclose(filePointer);
 
