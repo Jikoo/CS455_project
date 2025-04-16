@@ -58,7 +58,7 @@ typedef struct {
     int year;
 } Date;
 
-struct person {
+struct Person {
     Name name;
     Date date_of_birth;
     int age;
@@ -70,7 +70,43 @@ struct person {
     Address address;
 };
 
+/* Write to file */
+
+/* Function to display all */
+
+/* Search Function */
+
 /* Add to roster */
+void writeToRoster(Role role) {
+    FILE *filePointer;
+
+    filePointer = fopen("schoolRoster.txt", "w");
+
+    if (filePointer == NULL) {
+        printf("File failed to open.");
+    }
+
+    struct Person entry;
+
+    if (role == STUDENT) {
+        entry.role = STUDENT;
+    }
+    if (role == TEACHER) {
+        entry.role = TEACHER;
+    }
+    if (role == STAFF) {
+        entry.role = STAFF;
+    }
+
+    printf("Please enter the first name: ");
+    scanf("%s", entry.name.first_name);
+
+    printf("Please enter the middle name: ");
+    scanf("%s", entry.name.middle_name);
+
+    printf("Please enter the last name: ");
+    scanf("%s", entry.name.last_name);
+}
 
 /* Function to display options */
 void displayOptions() {
@@ -104,22 +140,18 @@ void displayOptions() {
                 printf("The option entered was invalid, please try again.\n");
                 break;
         }
-        printf("Would you like to continue? (y/n) ");
+
+        /*printf("Would you like to continue? (y/n) ");
         scanf("%c", &continueEdit);
 
         while (continueEdit != 'y' || continueEdit != 'n') {
             printf("Your input was invalid, please try again. Enter 'y' or 'n'");
             scanf("%c", &continueEdit);
-        }
+        }*/
     }
     
 }
 
-/* Write to file */
-
-/* Function to display all */
-
-/* Search Function */
 
 int main() {
     FILE *filePointer;
