@@ -81,24 +81,38 @@ void displayOptions() {
     printf("5) Would you like to add, edit, or delete a staff member? \n");
 
     int selectedOption;
+    char continueEdit = 'y';
+    scanf("%d", &selectedOption);
+    while (continueEdit == 'y') {
+        switch (selectedOption) {
+            case 1:
+                printf("Entering display mode.\n");
+                break;
+            case 2:
+                printf("Entering search mode.\n");
+                break;
+            case 3:
+                printf("Entering student editor.\n");
+                break;
+            case 4:
+                printf("Entering teacher editor.\n");
+                break;
+            case 5:
+                printf("Entering staff editor.\n");
+                break;
+            default:
+                printf("The option entered was invalid, please try again.\n");
+                break;
+        }
+        printf("Would you like to continue? (y/n) ");
+        scanf("%c", &continueEdit);
 
-    switch (selectedOption) {
-        case 1:
-            printf("Entering display mode.\n");
-            break;
-        case 2:
-            printf("Entering search mode.\n");
-            break;
-        case 3:
-            printf("Entering student editor.\n");
-            break;
-        case 4:
-            printf("Entering teacher editor.\n");
-            break;
-        case 5:
-            printf("Entering staff editor.\n");
-            break;
+        while (continueEdit != 'y' || continueEdit != 'n') {
+            printf("Your input was invalid, please try again. Enter 'y' or 'n'");
+            scanf("%c", &continueEdit);
+        }
     }
+    
 }
 
 /* Write to file */
