@@ -55,7 +55,7 @@ struct Teacher {
 
 struct Student {
     #include "person.h"
-    char grade;
+    char grade[15];
 };
 
 struct Staff {
