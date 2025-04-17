@@ -8,8 +8,8 @@
 
 /* Search Function */
 
-/* Add to roster */
-void writeToRoster(Role role) {
+/* Data entry */
+void dataEntry(Role role) {
     FILE *filePointer;
 
     filePointer = fopen("schoolRoster.txt", "w");
@@ -106,15 +106,15 @@ void displayOptions() {
                 break;
             case 3:
                 printf("Entering student editor.\n");
-                writeToRoster( STUDENT);
+                dataEntry( STUDENT);
                 break;
             case 4:
                 printf("Entering teacher editor.\n");
-                writeToRoster(TEACHER);
+                dataEntry(TEACHER);
                 break;
             case 5:
                 printf("Entering staff editor.\n");
-                writeToRoster(STAFF);
+                dataEntry(STAFF);
                 break;
             default:
                 printf("The option entered was invalid, please try again.\n");
