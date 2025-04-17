@@ -42,27 +42,27 @@ void writeToRoster(Role role) {
     /* Should the age be calculated based on entry? */
 
     printf("Gender: ");
-    scanf("%c", entry.gender);
+    scanf("%s", entry.gender);
 
     /* Phone number check? */
     printf("Phone number: ");
     scanf("%d", &entry.phone_number);
 
     printf("Email: ");
-    scanf("%c", entry.email);
+    scanf("%s", entry.email);
 
     printf("Street address: ");
-    scanf("%c", entry.address.street);
+    scanf("%s", entry.address.street);
 
     printf("Apartment number (If applicable): ");
-    scanf("%c", entry.address.apartment);
+    scanf("%s", entry.address.apartment);
 
     printf("City: ");
-    scanf("%c", entry.address.city);
+    scanf("%s", entry.address.city);
 
     /* Check for this? */
     printf("State (two letter code): ");
-    scanf("%c", entry.address.state);
+    scanf("%s", entry.address.state);
 
 
     if (role == STUDENT) {
