@@ -21,13 +21,13 @@ void writeToRoster(Role role) {
     struct Person entry;
 
     printf("Please enter the first name: ");
-    scanf("%s", entry.name.first_name);
+    fgets(entry.name.first_name, sizeof(entry.name.first_name), stdin);
 
     printf("Please enter the middle name: ");
-    scanf("%s", entry.name.middle_name);
+    fgets(entry.name.middle_name, sizeof(entry.name.middle_name), stdin);
 
     printf("Please enter the last name: ");
-    scanf("%s", entry.name.last_name);
+    fgets(entry.name.last_name, sizeof(entry.name.last_name), stdin);
 
     /* Need to process these entries */
     printf("Please enter their month of birth (1-12): ");
@@ -42,27 +42,27 @@ void writeToRoster(Role role) {
     /* Should the age be calculated based on entry? */
 
     printf("Gender: ");
-    scanf("%s", entry.gender);
+    fgets(entry.gender, sizeof(entry.gender), stdin);
 
     /* Phone number check? */
     printf("Phone number: ");
     scanf("%d", &entry.phone_number);
 
     printf("Email: ");
-    scanf("%s", entry.email);
+    fgets(entry.email, sizeof(entry.email), stdin);
 
     printf("Street address: ");
-    scanf("%s", entry.address.street);
+    fgets(entry.address.street, sizeof(entry.address.street), stdin);
 
     printf("Apartment number (If applicable): ");
-    scanf("%s", entry.address.apartment);
+    fgets(entry.address.apartment, sizeof(entry.address.apartment), stdin);
 
     printf("City: ");
-    scanf("%s", entry.address.city);
+    fgets(entry.address.city, sizeof(entry.address.city), stdin);
 
     /* Check for this? */
     printf("State (two letter code): ");
-    scanf("%s", entry.address.state);
+    fgets(entry.address.state, sizeof(entry.address.state), stdin);
 
 
     if (role == STUDENT) {
