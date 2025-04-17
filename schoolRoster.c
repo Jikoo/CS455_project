@@ -88,7 +88,7 @@ void displayOptions() {
     int selectedOption;
     char continueEdit = 'y';
     scanf("%d", &selectedOption);
-    while (continueEdit == 'y') {
+    //while (continueEdit == 'y') {
         switch (selectedOption) {
             case 1:
                 printf("Entering display mode.\n");
@@ -120,7 +120,7 @@ void displayOptions() {
             printf("Your input was invalid, please try again. Enter 'y' or 'n'");
             scanf("%c", &continueEdit);
         }*/
-    }
+    //}
     
 }
 
