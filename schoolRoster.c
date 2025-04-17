@@ -19,6 +19,7 @@ void writeToRoster(Role role) {
     }
 
     struct Person entry;
+    char buffer[100];
 
     printf("Please enter the first name: ");
     fgets(entry.name.first_name, sizeof(entry.name.first_name), stdin);
@@ -31,13 +32,16 @@ void writeToRoster(Role role) {
 
     /* Need to process these entries */
     printf("Please enter their month of birth (1-12): ");
-    scanf("%d", &entry.date_of_birth.month);
+    fgets(buffer, sizeof(buffer), stdin);
+    sscanf(buffer, "%d", &entry.date_of_birth.month);
 
     printf("Please enter their day of birth (1-31): ");
-    scanf("%d", &entry.date_of_birth.day);
+    fgets(buffer, sizeof(buffer), stdin);
+    sscanf(buffer, "%d", &entry.date_of_birth.day);
 
     printf("Please enter their year of birth: ");
-    scanf("%d", &entry.date_of_birth.year);
+    fgets(buffer, sizeof(buffer), stdin);
+    sscanf(buffer, "%d", &entry.date_of_birth.year);
 
     /* Should the age be calculated based on entry? */
 
@@ -46,7 +50,8 @@ void writeToRoster(Role role) {
 
     /* Phone number check? */
     printf("Phone number: ");
-    scanf("%d", &entry.phone_number);
+    fgets(buffer, sizeof(buffer), stdin);
+    sscanf(buffer, "%d", &entry.phone_number);
 
     printf("Email: ");
     fgets(entry.email, sizeof(entry.email), stdin);
