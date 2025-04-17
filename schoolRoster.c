@@ -90,9 +90,12 @@ void displayOptions() {
     printf("4) Would you like to add, edit, or delete a teacher? \n");
     printf("5) Would you like to add, edit, or delete a staff member? \n");
 
+    char buffer[10];
     int selectedOption;
+    fgets(buffer, sizeof(buffer), stdin);
+    sscanf(buffer, "%d", &selectedOption);
+
     char continueEdit = 'y';
-    scanf("%d", &selectedOption);
     //while (continueEdit == 'y') {
         switch (selectedOption) {
             case 1:
@@ -142,15 +145,15 @@ int main() {
     printf("Welcome to the school roster! Please Log in.\n");
     /*Log in function goes here*/
 
+    char buffer[10];
     char options;
     printf("Would you like to see the options? (y/n) ");
-    scanf("%c", &options);
+    fgets(buffer, sizeof(buffer), stdin);
+    sscanf(buffer, "%c", &options);
 
-    if (options == 'y') {
+    if (options == 'y' || options == 'Y') {
         displayOptions();
     }
-
-    
 
     fclose(filePointer);
 
