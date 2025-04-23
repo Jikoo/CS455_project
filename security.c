@@ -1,14 +1,8 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <openssl/sha.h>
+#include "security.h"
 #include <openssl/evp.h>
 
-// TODO need to make a header file
-// Should include IFDEF for handling reuse
-
-// Reqs -lssl flag to link openssl
-// Might need -lbsd for arc4rand
+// Reqs -lcrypto (and maybe -lssl depending on OS) flags to link openssl
+// Might need -lbsd for arc4rand depending on OS
 
 void generate_salt(unsigned char ptr[8]) {
   // Vulnerability resolution: secure random number generation used.
@@ -16,34 +10,38 @@ void generate_salt(unsigned char ptr[8]) {
   arc4random_buf(ptr, 8);
 }
 
-unsigned char* calculate_hash(unsigned char* input, int len) {
+unsigned char* calculate_hash(unsigned char *input, int len) {
   // SHA-256 from OpenSSL
   // https://github.com/falk-werner/openssl-example/blob/main/doc/sha256.md
   // Initialize context.
-  EVP_MD_CTX * context = EVP_MD_CTX_create();
+  EVP_MD_CTX *context = EVP_MD_CTX_create();
   EVP_DigestInit(context, EVP_sha256());
+
   // Add data.
   EVP_DigestUpdate(context, input, len);
+
   // Produce finalized result.
   unsigned char result[EVP_MAX_MD_SIZE];
   unsigned int result_length = 0;
   EVP_DigestFinal(context, result, &result_length);
-  EVP_MD_CTX_free(context);
+
+  // Free residual context data.
+  EVP_MD_CTX_destroy(context);
 
   if (result_length != SHA256_DIGEST_LENGTH) {
     fprintf(stderr, "Got unexpected length %d for SHA256 (%d)", result_length, SHA256_DIGEST_LENGTH);
-    // TODO should this exit?
     return 0;
   }
 
   // Vulnerability: Memory allocation -> leak
-  unsigned char* ptr = malloc(result_length);
+  unsigned char *ptr = malloc(result_length);
   memcpy(ptr, result, result_length);
   return ptr;
 }
 
-int log_in(char* password, char* salt, unsigned char hash[SHA256_DIGEST_LENGTH]) {
+int log_in(char *password, char *salt, unsigned char hash[SHA256_DIGEST_LENGTH]) {
   // TODO does this include \0?
+  //  It does, need to deal with that (or not, and treat it as a feature).
   unsigned long len1 = strlen(password);
   unsigned long len2 = strlen(salt);
   unsigned long total = 0;
@@ -60,7 +58,12 @@ int log_in(char* password, char* salt, unsigned char hash[SHA256_DIGEST_LENGTH])
   memcpy(ptr, password, len1);
   memcpy(ptr + len1 * sizeof(char), salt, len2);
 
-  unsigned char* calculated = calculate_hash(ptr, total);
+  unsigned char *calculated = calculate_hash(ptr, total);
+
+  // If hash is unexpected length, deny attempt.
+  if (calculated <= 0) {
+    return 0;
+  }
 
   // Vulnerability resolution: No memory leak; memory is freed.
   free(ptr);
@@ -77,5 +80,21 @@ int log_in(char* password, char* salt, unsigned char hash[SHA256_DIGEST_LENGTH])
   return 1;
 }
 
-// TODO encrypt & decrypt
+void cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned char *iv, int enc) {
+  // Set up cipher context for AES-256 CBC encoding/decoding.
+  EVP_CIPHER_CTX *context;
+  EVP_CipherInit(context, EVP_aes_256_cbc(), key, iv, enc);
 
+  int result_len;
+  unsigned char *result = malloc(2 * len);
+  // Perform operation and write to file.
+  EVP_CipherUpdate(context, result, &result_len, in, len);
+  fwrite(result, sizeof(char), result_len, out);
+
+  // Finalize operation and write rest to file.
+  EVP_CipherFinal(context, result, &result_len);
+  fwrite(result, sizeof(char), result_len, out);
+
+  // Free residual context data.
+  EVP_CIPHER_CTX_cleanup(context);
+}
