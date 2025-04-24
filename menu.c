@@ -47,8 +47,6 @@ void pause_for_input() {
 }
 
 int main(int argc, char *argv[]) {
-
-  printf("yes 0\n");
   // Store the original terminal settings for later restoration.
   tcgetattr(STDIN_FILENO, &originalt);
   // Create a copy for modification.
