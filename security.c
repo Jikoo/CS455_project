@@ -1,21 +1,25 @@
 #include "security.h"
+#include <stdlib.h>
+#include <string.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 
-#define KEY_SIZE 32  // 256 bits for AES-256
-#define IV_SIZE 16   // 128 bits for AES block size
-
 // Reqs -lcrypto (and maybe -lssl depending on OS) flags to link openssl
 // Might need -lbsd for arc4rand depending on OS
 
-void generate_salt(unsigned char ptr[8]) {
+void generate_salt(unsigned char buf[SALT_SIZE]) {
   // Vulnerability resolution: secure random number generation used.
   // https://man.openbsd.org/cgi-bin/man.cgi/OpenBSD-current/man3/arc4random.3
-  arc4random_buf(ptr, 8);
+  arc4random_buf(buf, SALT_SIZE);
 }
 
-unsigned char* calculate_hash(char *input, unsigned char salt[8]) {
+void generate_iv(unsigned char buf[IV_SIZE]) {
+  // As above.
+  arc4random_buf(buf, IV_SIZE);
+}
+
+unsigned char* calculate_hash(const char *input, const unsigned char salt[SALT_SIZE]) {
   // SHA-256 from OpenSSL
   // https://github.com/falk-werner/openssl-example/blob/main/doc/sha256.md
   // Initialize context.
@@ -29,7 +33,7 @@ unsigned char* calculate_hash(char *input, unsigned char salt[8]) {
 
   // Vulnerability: Overflow protection
   // Could add a pure math check for signed if we'd prefer
-  if (__builtin_add_overflow(len1, 8, &total)) {
+  if (__builtin_add_overflow(len1, SALT_SIZE, &total)) {
     return 0;
   }
 
@@ -37,7 +41,7 @@ unsigned char* calculate_hash(char *input, unsigned char salt[8]) {
   // Like strncpy, but won't complain about typing and won't stop on \0 in salt.
   memcpy(ptr, input, len1);
   // TODO this is probably wrong
-  memcpy(ptr + len1 * sizeof(char), salt, 8);
+  memcpy(ptr + len1 * sizeof(char), salt, SALT_SIZE);
 
   // Add data.
   EVP_DigestUpdate(context, ptr, total);
@@ -65,24 +69,36 @@ unsigned char* calculate_hash(char *input, unsigned char salt[8]) {
   return ptr;
 }
 
-int log_in(char *password, unsigned char salt[8], unsigned char hash[SHA256_DIGEST_LENGTH]) {
+unsigned char* log_in(const char *password, const unsigned char salt[SALT_SIZE], const unsigned char hash[SHA256_DIGEST_LENGTH]) {
   unsigned char *calculated = calculate_hash(password, salt);
 
   // If hash is unexpected length, deny attempt.
   if (calculated <= 0) {
-    return 0;
+    return NULL;
   }
 
   for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
     if (calculated[i] != hash[i]) {
-      return 0;
+      return NULL;
     }
   }
 
   // Vulnerability resolution: No memory leak; memory is freed.
   free(calculated);
 
-  return 1;
+  // Hash actual password for use as secret.
+  // TODO memory allocation checks
+  EVP_MD_CTX *context = EVP_MD_CTX_create();
+  EVP_DigestInit(context, EVP_sha256());
+  EVP_DigestUpdate(context, password, strlen(password));
+  unsigned char *result = malloc(EVP_MAX_MD_SIZE);
+  unsigned int result_length = 0;
+  EVP_DigestFinal(context, result, &result_length);
+
+  // Free residual context data.
+  EVP_MD_CTX_destroy(context);
+
+  return result;
 }
 
 /*void cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned char *iv, int enc) {
@@ -104,7 +120,7 @@ int log_in(char *password, unsigned char salt[8], unsigned char hash[SHA256_DIGE
   EVP_CIPHER_CTX_cleanup(context);
 }*/
 
-int cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned char *iv, int enc) {
+int cipher(const unsigned char *in, const int len, FILE *out, const unsigned char key[KEY_SIZE], const unsigned char iv[IV_SIZE], int enc) {
  EVP_CIPHER_CTX *context = EVP_CIPHER_CTX_new();
     if (!context) {
         fprintf(stderr, "Failed to create cipher context.\n");
@@ -146,20 +162,6 @@ int cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned c
 
     free(result);
     EVP_CIPHER_CTX_free(context);
-
-    return 1; // success
-}
-
-int generate_key_iv(unsigned char *key, unsigned char *iv) {
-    if (!RAND_bytes(key, KEY_SIZE)) {
-        fprintf(stderr, "Error generating random key.\n");
-        return 0;
-    }
-
-    if (!RAND_bytes(iv, IV_SIZE)) {
-        fprintf(stderr, "Error generating random IV.\n");
-        return 0;
-    }
 
     return 1; // success
 }

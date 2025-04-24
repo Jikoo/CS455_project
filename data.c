@@ -1,5 +1,7 @@
 #include <ctype.h>
 #include <dirent.h>
+#include <fcntl.h>
+#include <linux/limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -12,25 +14,31 @@
 #define KEY_LENGTH 32  // AES-256 = 32 bytes
 #define IV_LENGTH 16   // AES block size
 
-int is_note(char* filename) {
-  if (filename[0] != '.' || !isdigit(filename[1])) {
+int is_note(char *file_name) {
+  // If the file name doesn't start with . and a digit, it's not a note.
+  if (file_name[0] != '.' || !isdigit(file_name[1])) {
     return 0;
   }
-  for(int i = 2; i <= MAXNAMLEN; ++i) {
-    if (filename[i] == '\0') {
+
+  // Allow any number of additional digits.
+  for (int i = 2; i <= MAXNAMLEN; ++i) {
+    if (file_name[i] == '\0') {
       return 1;
     }
-    if (!isdigit(filename[i])) {
+    if (!isdigit(file_name[i])) {
       return 0;
     }
   }
+
+  // If the file is the max name length and every character matched, it's okay.
+  // Weird though, because unsigned longs don't have 255 digits in base 10.
   return 1;
 }
 
-int list_notes() {
-  DIR *dir = opendir(".");
+int list_notes(const char *folder_name) {
+  DIR *dir = opendir(folder_name);
   if (dir <= 0) {
-    perror(".");
+    perror(folder_name);
     return 0;
   }
 
@@ -54,6 +62,38 @@ int list_notes() {
     }
   }
   return count;
+}
+
+char* intake_file_name(unsigned long *len_ptr) {
+  char *line = NULL;
+  int read = getline(&line, len_ptr, stdin);
+
+  // Handle errors getting input.
+  if (read <= 0) {
+    perror("filename");
+    return NULL;
+  }
+
+  // Truncate input to the first invalid character.
+  for (int i = 0; i < *len_ptr; ++i) {
+    if (!isdigit(line[i])) {
+      line[i] = '\0';
+    }
+    *len_ptr = i + 1;
+  }
+
+  if (*len_ptr <= 1) {
+    fprintf(stderr, "Invalid file name! File names are numeric.\n");
+    return NULL;
+  }
+
+  char *note_name = malloc(*len_ptr + 1);
+  note_name[0] = '.';
+  strncpy(note_name + sizeof(char), line, *len_ptr);
+
+  free(line);
+
+  return note_name;
 }
 
 int list_notes_in_folder(const char *folder_name) {
@@ -90,16 +130,11 @@ int list_notes_in_folder(const char *folder_name) {
     return index;
 }
 
-void add_notes_in_folder(const char *folder_name, const char *input) {
-    
-  unsigned char key[KEY_LENGTH];
-  unsigned char iv[IV_LENGTH];
+void add_notes_in_folder(const unsigned char *key, const char *folder_name, const char *input) {
 
-  if (!generate_key_iv(key, iv)) {
-    fprintf(stderr, "Failed to generate key and IV\n");
-    pause_for_input();
-    return;
-  }
+  unsigned char iv[IV_LENGTH];
+  generate_iv(iv);
+
     char filename[256];
 
     struct stat st = {0};
@@ -112,7 +147,6 @@ void add_notes_in_folder(const char *folder_name, const char *input) {
     printf("Enter filename to save the encrypted note: ");
     if (fgets(filename, sizeof(filename), stdin) == NULL) {
         fprintf(stderr, "Failed to read filename.\n");
-        pause_for_input();
         return;
     }
 
@@ -121,14 +155,12 @@ void add_notes_in_folder(const char *folder_name, const char *input) {
     FILE *noteBook = fopen(filePath, "wb");
     if (!noteBook) {
         perror("Failed to open file for writing");
-        pause_for_input();
         return;
     }
 
     if (!cipher((unsigned char *)input, strlen(input), noteBook, key, iv, 1)) {
         fprintf(stderr, "Encryption failed.\n");
         fclose(noteBook);
-        pause_for_input();
         return;
     }
 
@@ -137,88 +169,64 @@ void add_notes_in_folder(const char *folder_name, const char *input) {
     printf("Encrypted as note %s!", filename);
 }
 
-char *getNoteName(const char *folder_name, int note_number){
-  
-  int index = 0;
-
-  DIR *dir;
-  struct dirent *entry;
-
-  dir = opendir(folder_name);
-  if (dir == NULL) {
-      perror("Could not open folder");
-      return 0;
+void combined_path(const char *dir, const char *entry_name, char *result) {
+  // Vulnerability: strcpy
+  strcpy(result, dir);
+  if (dir[strlen(dir) - 1] != '/') {
+    strcat(result, "/");
   }
-
-  while ((entry = readdir(dir)) != NULL) {
-    if(index == note_number){
-       char *noteName = malloc(strlen(entry->d_name) + 1);
-        if (noteName == NULL) {
-          perror("Failed to allocate memory");
-          closedir(dir);
-          return NULL;
-        }
-        strcpy(noteName, entry->d_name);
-        printf("\nOpening %s\n", noteName);
-        closedir(dir);
-        return noteName;
-    }
-    else{
-      index++;
-    }
-  }
-
-  return NULL;
+  // Vulnerability: strcat
+  strcat(result, entry_name);
 }
 
-void decrypt_note(const char *folder_name, int note_number) {
+void decrypt_note(const unsigned char *key, const char *folder_name, const char *note_name) {
 
-    char *filename = getNoteName(folder_name, note_number);
-    char filePath[512];
-    snprintf(filePath, sizeof(filePath), "%s/%s", folder_name, filename);
-    FILE *noteBook = fopen(filePath, "rb");
+  // Resolve combined_path vulnerabilities by checking lengths before calls.
+  int len1 = strlen(folder_name);
+  int len2 = strlen(note_name);
+  int total = 0;
+  if (__builtin_add_overflow(len1, len2, &total)
+    || __builtin_add_overflow(total, 1, &total)
+    || total > PATH_MAX) {
+    fprintf(stderr, "Path too long: %s/%s", folder_name, note_name);
+    return;
+  }
+  char file_path[PATH_MAX];
+  combined_path(folder_name, note_name, file_path);
 
-    if (!noteBook) {
-        perror("Error opening file");
-        return;
-    }
+  struct stat stat_val;
+  if (stat(file_path, &stat_val) <= 0) {
+    perror(file_path);
+    return;
+  }
 
-    unsigned char key[KEY_LENGTH];
-    unsigned char iv[IV_LENGTH];
-    if (!generate_key_iv(key, iv)) {
-        fclose(noteBook);
-        return;
-    }
+  int fd = open(note_name, O_RDONLY);
 
-    int current_note_number;
-    unsigned char decrypted_note[256];
-    int note_found = 0;
+  // TODO verify stat results!
+  unsigned long file_len = stat_val.st_size;
 
-    while (fread(&current_note_number, sizeof(current_note_number), 1, noteBook) == 1) {
-        if (current_note_number == note_number) {
-            // Decrypt the note content
-            int len;
-            len = fread(decrypted_note, sizeof(unsigned char), sizeof(decrypted_note), noteBook);
-            decrypted_note[len] = '\0';  // Null terminate the string
+  if (fd <= 0) {
+    perror(note_name);
+    return;
+  }
+  if (file_len < 64) {
+    fprintf(stderr, "Note %s corrupted. Please delete.", note_name);
+    return;
+  }
 
-            if (!cipher(decrypted_note, len, NULL, key, iv, 0)) {
-                fprintf(stderr, "Decryption failed.\n");
-                fclose(noteBook);
-                return;
-            }
+  // Read IV.
+  unsigned char iv[32];
+  int bytes_read = read(fd, iv, 32);
+  if (bytes_read < 32) {
+    perror(note_name);
+    return;
+  }
 
-            printf("Decrypted Note #%d: %s\n", note_number, decrypted_note);
-            note_found = 1;
-            break;
-        } else {
-            // Skip this note content if the number doesn't match
-            fseek(noteBook, sizeof(decrypted_note), SEEK_CUR);
-        }
-    }
+  // Read encrypted content.
+  unsigned char* contents = malloc(file_len - 32);
+  bytes_read = read(fd, contents, file_len);
+  // TODO verify length
+  // TODO check new output value
+  cipher(contents, bytes_read, stdout, key, iv, 0);
 
-    if (!note_found) {
-        printf("Note #%d not found.\n", note_number);
-    }
-
-    fclose(noteBook);
 }

@@ -8,15 +8,18 @@
 #include <openssl/sha.h>
 #include <openssl/types.h>
 
-void generate_salt(unsigned char ptr[8]);
+#define SALT_SIZE 8  // 64 bit salt
+#define KEY_SIZE 32  // 256 bits for AES-256
+#define IV_SIZE 16   // 128 bits for AES block size
 
-unsigned char* calculate_hash(char *input, unsigned char salt[8]);
+void generate_salt(unsigned char buf[SALT_SIZE]);
 
-int log_in(char *password, unsigned char salt[8], unsigned char hash[SHA256_DIGEST_LENGTH]);
+void generate_iv(unsigned char buf[IV_SIZE]);
 
-// TODO should probably change key and IV to fixed len
-//void cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned char *iv, int enc);
-int cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned char *iv, int enc);
+unsigned char* calculate_hash(const char *input, const unsigned char salt[SALT_SIZE]);
 
-int generate_key_iv(unsigned char *key, unsigned char *iv);
+unsigned char* log_in(const char *password, const unsigned char salt[SALT_SIZE], const unsigned char hash[SHA256_DIGEST_LENGTH]);
+
+int cipher(const unsigned char *in, const int len, FILE *out, const unsigned char key[KEY_SIZE], const unsigned char iv[IV_SIZE], int enc);
+
 #endif
