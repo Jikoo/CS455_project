@@ -1,14 +1,24 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <linux/limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
 #include <openssl/sha.h>
+#include <openssl/rand.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
 #include "security.h"
+#include "data.h"
+
+#define MAX_INPUT_SIZE 100
+
+const char *folder = "My Notebook";
 
 struct login_details {
   unsigned char hash[SHA256_DIGEST_LENGTH];
@@ -17,34 +27,6 @@ struct login_details {
 
 static struct termios originalt;
 static struct termios instant_no_echo;
-
-int main_menu(char *secret);
-
-void view_menu(char *secret);
-
-void add_menu(char *secret);
-
-void delete_menu(char *secret);
-
-// TODO might want to move this to a separate file, data.c+h or something.
-int list_notes();
-
-int is_note(char* filename) {
-  if (filename[0] != '.' || !isdigit(filename[1])) {
-    return 0;
-  }
-  for(int i = 2; i <= MAXNAMLEN; ++i) {
-    if (filename[i] == '\0') {
-      return 1;
-    }
-    if (!isdigit(filename[i])) {
-      return 0;
-    }
-  }
-  return 1;
-}
-
-int next_file_number();
 
 // Turn echo off and don't wait for newlines.
 void echo_icanon_off() {
@@ -63,6 +45,21 @@ void pause_for_input() {
   reset_termios();
   printf("\n\n\n");
 }
+
+int main_menu(char *secret);
+
+void view_menu(char *secret);
+
+void add_menu(char *secret);
+
+void delete_menu(char *secret);
+
+// moved to data.c+h 
+int list_notes();
+
+int is_note(char* filename);
+
+int next_file_number();
 
 int main(int argc, char *argv[]) {
   // Store the original terminal settings for later restoration.
@@ -87,6 +84,12 @@ int main(int argc, char *argv[]) {
 
   // TODO would be user-friendly to alert them that entering password will
   // create datastore on first time setup.
+  printf("\nWelcome to the Menu System!\n");
+  printf("--------------------------------------------------\n");
+  printf("First time setup detected.\n");
+  printf("By entering a password, you will initialize the secure datastore.\n");
+  printf("Make sure to remember this password, as it will be required to access data in the future.\n");
+  printf("--------------------------------------------------\n");
 
   int pwFromPrompt = 0;
   // If password is not specified, read it.
@@ -217,7 +220,8 @@ int main_menu(char *secret) {
 
 void view_menu(char *secret) {
   printf("Current notes:\n");
-  int count = list_notes();
+  //int count = list_notes();
+  int count = list_notes_in_folder(folder);
 
   if (count <= 0) {
     printf("\nNothing to view!\n");
@@ -228,9 +232,34 @@ void view_menu(char *secret) {
   printf("Which would you like to view?\n");
 
   // TODO take input
-  printf("Decrypting note %s!", "TODO");
+  char input[MAX_INPUT_SIZE];
+  int note_selection = 0;
+
+  if (count > 0) {
+    for (int i = 0; i < count-1; i++) {
+      printf("Note %d\n", i + 1);
+    }
+
+    printf("Enter the number of the note to view: ");
+
+    if (fgets(input, sizeof(input), stdin) == NULL) {
+      perror("fgets");
+      pause_for_input();
+      return;
+    }
+
+    if (sscanf(input, "%d", &note_selection) < 1 
+    || sscanf(input, "%d", &note_selection) > count) {
+      printf("Invalid input.\n");
+      pause_for_input();
+      return;
+    }
+  }
+  
+  printf("Decrypting note %d!", note_selection);
 
   // TODO decrypt to STDIO_FILE
+  
 
   pause_for_input();
 }
@@ -252,10 +281,9 @@ void add_menu(char *secret) {
     return;
   }
 
-  // TODO encrypt to file
-
-  printf("Encrypted as note %s!", "TODO");
-
+  // Encrypt to file
+  input[strcspn(input, "\n")] = 0;
+  add_notes_in_folder(folder, input);
   pause_for_input();
 }
 
@@ -276,33 +304,4 @@ void delete_menu(char *secret) {
   printf("Woah, you selected note %s!", "TODO");
 
   pause_for_input();
-}
-
-int list_notes() {
-  DIR *dir = opendir(".");
-  if (dir <= 0) {
-    perror(".");
-    return 0;
-  }
-
-  struct winsize wsize;
-  ioctl(STDOUT_FILENO, TIOCGWINSZ, &wsize);
-
-  int width = wsize.ws_col;
-  int cols = (width - 6) / 8 + 2;
-
-  int count = 0;
-  struct dirent *entry;
-  while ((entry = readdir(dir))) {
-    if (is_note(entry->d_name)) {
-      printf("%-6s", entry->d_name + sizeof(char));
-      ++count;
-      if (count % cols == 0) {
-        printf("\n");
-      } else {
-        printf("  ");
-      }
-    }
-  }
-  return count;
 }
