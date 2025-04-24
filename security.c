@@ -1,14 +1,21 @@
 #include "security.h"
+#include <stdlib.h>
+#include <string.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 
 // Reqs -lcrypto (and maybe -lssl depending on OS) flags to link openssl
 // Might need -lbsd for arc4rand depending on OS
 
-void generate_salt(unsigned char ptr[8]) {
+void generate_salt(unsigned char buf[8]) {
   // Vulnerability resolution: secure random number generation used.
   // https://man.openbsd.org/cgi-bin/man.cgi/OpenBSD-current/man3/arc4random.3
-  arc4random_buf(ptr, 8);
+  arc4random_buf(buf, 8);
+}
+
+void generate_iv(unsigned char buf[32]) {
+  // As above.
+  arc4random_buf(buf, 32);
 }
 
 unsigned char* calculate_hash(char *input, unsigned char salt[8]) {
@@ -61,24 +68,35 @@ unsigned char* calculate_hash(char *input, unsigned char salt[8]) {
   return ptr;
 }
 
-int log_in(char *password, unsigned char salt[8], unsigned char hash[SHA256_DIGEST_LENGTH]) {
+unsigned char* log_in(char *password, unsigned char salt[8], unsigned char hash[SHA256_DIGEST_LENGTH]) {
   unsigned char *calculated = calculate_hash(password, salt);
 
   // If hash is unexpected length, deny attempt.
   if (calculated <= 0) {
-    return 0;
+    return NULL;
   }
 
   for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
     if (calculated[i] != hash[i]) {
-      return 0;
+      return NULL;
     }
   }
 
   // Vulnerability resolution: No memory leak; memory is freed.
   free(calculated);
 
-  return 1;
+  // Hash actual password for use as secret.
+  EVP_MD_CTX *context = EVP_MD_CTX_create();
+  EVP_DigestInit(context, EVP_sha256());
+  EVP_DigestUpdate(context, password, strlen(password));
+  unsigned char *result = malloc(EVP_MAX_MD_SIZE);
+  unsigned int result_length = 0;
+  EVP_DigestFinal(context, result, &result_length);
+
+  // Free residual context data.
+  EVP_MD_CTX_destroy(context);
+
+  return result;
 }
 
 void cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned char *iv, int enc) {

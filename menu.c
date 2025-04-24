@@ -18,13 +18,13 @@ struct login_details {
 static struct termios originalt;
 static struct termios instant_no_echo;
 
-int main_menu(char *secret);
+int main_menu(unsigned char *secret);
 
-void view_menu(char *secret);
+void view_menu(unsigned char *secret);
 
-void add_menu(char *secret);
+void add_menu(unsigned char *secret);
 
-void delete_menu(char *secret);
+void delete_menu();
 
 // TODO might want to move this to a separate file, data.c+h or something.
 int list_notes();
@@ -45,6 +45,38 @@ int is_note(char* filename) {
 }
 
 int next_file_number();
+
+char* intake_file_name(unsigned long *len_ptr) {
+  char *line = NULL;
+  int read = getline(&line, len_ptr, stdin);
+
+  // Handle errors getting input.
+  if (read <= 0) {
+    perror("filename");
+    return NULL;
+  }
+
+  // Truncate input to the first invalid character.
+  for (int i = 0; i < *len_ptr; ++i) {
+    if (!isdigit(line[i])) {
+      line[i] = '\0';
+    }
+    *len_ptr = i + 1;
+  }
+
+  if (*len_ptr <= 1) {
+    fprintf(stderr, "Invalid file name! File names are numeric.\n");
+    return NULL;
+  }
+
+  char *note_name = malloc(*len_ptr + 1);
+  note_name[0] = '.';
+  strncpy(note_name + sizeof(char), line, *len_ptr);
+
+  free(line);
+
+  return note_name;
+}
 
 // Turn echo off and don't wait for newlines.
 void echo_icanon_off() {
@@ -163,9 +195,14 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (log_in(pwd, details.salt, details.hash)) {
-    // TODO should secret still be pwd?
-    while (main_menu(pwd)) {
+  unsigned char *secret = log_in(pwd, details.salt, details.hash);
+
+  if (pwFromPrompt) {
+    free(pwd);
+  }
+
+  if (secret != NULL) {
+    while (main_menu(secret)) {
       // While exit is not selected, always re-enter main menu after completion.
     }
     printf("\nHave a super day!\n");
@@ -174,14 +211,11 @@ int main(int argc, char *argv[]) {
     sleep(1);
   }
 
-  if (pwFromPrompt) {
-    free(pwd);
-  }
-
+  free(secret);
   return 0;
 }
 
-int main_menu(char *secret) {
+int main_menu(unsigned char *secret) {
   printf("Please choose an option:\n");
   printf("  1) View note\n");
   printf("  2) Create note\n");
@@ -215,7 +249,7 @@ int main_menu(char *secret) {
   return 1;
 }
 
-void view_menu(char *secret) {
+void view_menu(unsigned char *secret) {
   printf("Current notes:\n");
   int count = list_notes();
 
@@ -227,15 +261,52 @@ void view_menu(char *secret) {
 
   printf("Which would you like to view?\n");
 
-  // TODO take input
-  printf("Decrypting note %s!", "TODO");
+  unsigned long len = 0;
+  char *note_name = intake_file_name(&len);
 
-  // TODO decrypt to STDIO_FILE
+  if (note_name == NULL) {
+    // Method handles error logging.
+    return;
+  }
 
+  printf("Decrypting note %s!", note_name + sizeof(char));
+
+  // TODO fstat before, lstat after?
+  // Need file size!
+  int fd = open(note_name, O_RDONLY);
+  unsigned long file_len = 0; // TODO read length safely!
+
+  if (fd <= 0) {
+    perror(note_name);
+    free(note_name);
+    return;
+  }
+  if (file_len < 64) {
+    fprintf(stderr, "Note %s corrupted. Please delete.", note_name);
+    free(note_name);
+    return;
+  }
+
+  // Read IV.
+  unsigned char iv[32];
+  int bytes_read = read(fd, iv, 32);
+  if (bytes_read < 32) {
+    perror(note_name);
+    free(note_name);
+    return;
+  }
+
+  // Read encrypted content.
+  unsigned char* contents = malloc(file_len - 32);
+  bytes_read = read(fd, contents, file_len);
+  // TODO verify length
+  cipher(contents, bytes_read, stdout, secret, iv, 0);
+
+  free(note_name);
   pause_for_input();
 }
 
-void add_menu(char *secret) {
+void add_menu(unsigned char *secret) {
   printf("Please enter the note's content:\n");
 
   // TODO may want to use getline instead (but would need to free when done!)
@@ -259,7 +330,7 @@ void add_menu(char *secret) {
   pause_for_input();
 }
 
-void delete_menu(char *secret) {
+void delete_menu() {
   printf("Current notes:\n");
   int count = list_notes();
 
@@ -270,6 +341,14 @@ void delete_menu(char *secret) {
   }
 
   printf("Which would you like to delete?\n");
+
+  unsigned long len = 0;
+  char *note_name = intake_file_name(&len);
+
+  if (note_name == NULL) {
+    // Method handles error logging.
+    return;
+  }
 
   // TODO delete
 
