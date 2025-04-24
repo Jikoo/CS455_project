@@ -1,14 +1,24 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <linux/limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
 #include <openssl/sha.h>
+#include <openssl/rand.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
 #include "security.h"
+#include "data.h"
+
+#define MAX_INPUT_SIZE 100
+
+const char *folder = "My Notebook";
 
 struct login_details {
   unsigned char hash[SHA256_DIGEST_LENGTH];
@@ -18,6 +28,24 @@ struct login_details {
 static struct termios originalt;
 static struct termios instant_no_echo;
 
+// Turn echo off and don't wait for newlines.
+void echo_icanon_off() {
+  tcsetattr( STDIN_FILENO, TCSANOW, &instant_no_echo);
+}
+
+// Reset termios: Turn echo back on, wait for newlines.
+void reset_termios() {
+  tcsetattr(STDIN_FILENO, TCSANOW, &originalt);
+}
+
+void pause_for_input() {
+  echo_icanon_off();
+  printf("\nPress any key to return to the main menu...");
+  getchar();
+  reset_termios();
+  printf("\n\n\n");
+}
+
 int main_menu(unsigned char *secret);
 
 void view_menu(unsigned char *secret);
@@ -26,23 +54,10 @@ void add_menu(unsigned char *secret);
 
 void delete_menu();
 
-// TODO might want to move this to a separate file, data.c+h or something.
+// moved to data.c+h
 int list_notes();
 
-int is_note(char* filename) {
-  if (filename[0] != '.' || !isdigit(filename[1])) {
-    return 0;
-  }
-  for(int i = 2; i <= MAXNAMLEN; ++i) {
-    if (filename[i] == '\0') {
-      return 1;
-    }
-    if (!isdigit(filename[i])) {
-      return 0;
-    }
-  }
-  return 1;
-}
+int is_note(char* filename);
 
 int next_file_number();
 
@@ -78,24 +93,6 @@ char* intake_file_name(unsigned long *len_ptr) {
   return note_name;
 }
 
-// Turn echo off and don't wait for newlines.
-void echo_icanon_off() {
-  tcsetattr( STDIN_FILENO, TCSANOW, &instant_no_echo);
-}
-
-// Reset termios: Turn echo back on, wait for newlines.
-void reset_termios() {
-  tcsetattr(STDIN_FILENO, TCSANOW, &originalt);
-}
-
-void pause_for_input() {
-  echo_icanon_off();
-  printf("\nPress any key to return to the main menu...");
-  getchar();
-  reset_termios();
-  printf("\n\n\n");
-}
-
 int main(int argc, char *argv[]) {
   // Store the original terminal settings for later restoration.
   tcgetattr(STDIN_FILENO, &originalt);
@@ -119,6 +116,12 @@ int main(int argc, char *argv[]) {
 
   // TODO would be user-friendly to alert them that entering password will
   // create datastore on first time setup.
+  printf("\nWelcome to the Menu System!\n");
+  printf("------------------------------------------------------------------------------------------\n");
+  printf("First time setup detected.\n");
+  printf("By entering a password, you will initialize the secure datastore.\n");
+  printf("Make sure to remember this password, as it will be required to access data in the future.\n");
+  printf("------------------------------------------------------------------------------------------\n");
 
   int pwFromPrompt = 0;
   // If password is not specified, read it.
@@ -251,7 +254,8 @@ int main_menu(unsigned char *secret) {
 
 void view_menu(unsigned char *secret) {
   printf("Current notes:\n");
-  int count = list_notes();
+  //int count = list_notes();
+  int count = list_notes_in_folder(folder);
 
   if (count <= 0) {
     printf("\nNothing to view!\n");
@@ -266,10 +270,13 @@ void view_menu(unsigned char *secret) {
 
   if (note_name == NULL) {
     // Method handles error logging.
+    free(note_name);
     return;
   }
 
   printf("Decrypting note %s!", note_name + sizeof(char));
+  // TODO decrypt to STDIO_FILE
+  decrypt_note(folder, note_selection);
 
   // TODO fstat before, lstat after?
   // Need file size!
@@ -323,10 +330,9 @@ void add_menu(unsigned char *secret) {
     return;
   }
 
-  // TODO encrypt to file
-
-  printf("Encrypted as note %s!", "TODO");
-
+  // Encrypt to file
+  input[strcspn(input, "\n")] = 0;
+  add_notes_in_folder(folder, input);
   pause_for_input();
 }
 
@@ -355,33 +361,4 @@ void delete_menu() {
   printf("Woah, you selected note %s!", "TODO");
 
   pause_for_input();
-}
-
-int list_notes() {
-  DIR *dir = opendir(".");
-  if (dir <= 0) {
-    perror(".");
-    return 0;
-  }
-
-  struct winsize wsize;
-  ioctl(STDOUT_FILENO, TIOCGWINSZ, &wsize);
-
-  int width = wsize.ws_col;
-  int cols = (width - 6) / 8 + 2;
-
-  int count = 0;
-  struct dirent *entry;
-  while ((entry = readdir(dir))) {
-    if (is_note(entry->d_name)) {
-      printf("%-6s", entry->d_name + sizeof(char));
-      ++count;
-      if (count % cols == 0) {
-        printf("\n");
-      } else {
-        printf("  ");
-      }
-    }
-  }
-  return count;
 }

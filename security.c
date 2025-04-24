@@ -2,7 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <openssl/evp.h>
+#include <openssl/rand.h>
 #include <openssl/sha.h>
+
+#define KEY_SIZE 32  // 256 bits for AES-256
+#define IV_SIZE 16   // 128 bits for AES block size
 
 // Reqs -lcrypto (and maybe -lssl depending on OS) flags to link openssl
 // Might need -lbsd for arc4rand depending on OS
@@ -99,7 +103,7 @@ unsigned char* log_in(char *password, unsigned char salt[8], unsigned char hash[
   return result;
 }
 
-void cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned char *iv, int enc) {
+/*void cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned char *iv, int enc) {
   // Set up cipher context for AES-256 CBC encoding/decoding.
   EVP_CIPHER_CTX *context;
   EVP_CipherInit(context, EVP_aes_256_cbc(), key, iv, enc);
@@ -116,4 +120,64 @@ void cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned 
 
   // Free residual context data.
   EVP_CIPHER_CTX_cleanup(context);
+}*/
+
+int cipher(unsigned char *in, int len, FILE *out, unsigned char *key, unsigned char *iv, int enc) {
+ EVP_CIPHER_CTX *context = EVP_CIPHER_CTX_new();
+    if (!context) {
+        fprintf(stderr, "Failed to create cipher context.\n");
+        return 0;
+    }
+
+    if (!EVP_CipherInit_ex(context, EVP_aes_256_cbc(), NULL, key, iv, enc)) {
+        fprintf(stderr, "CipherInit failed.\n");
+        EVP_CIPHER_CTX_free(context);
+        return 0;
+    }
+
+    int out_len;
+    unsigned char *result = malloc(len + EVP_CIPHER_block_size(EVP_aes_256_cbc()));
+    if (!result) {
+        fprintf(stderr, "Failed to allocate memory for encryption.\n");
+        EVP_CIPHER_CTX_free(context);
+        return 0;
+    }
+
+    if (!EVP_CipherUpdate(context, result, &out_len, in, len)) {
+        fprintf(stderr, "CipherUpdate failed.\n");
+        free(result);
+        EVP_CIPHER_CTX_free(context);
+        return 0;
+    }
+
+    fwrite(result, 1, out_len, out);
+
+    int final_len;
+    if (!EVP_CipherFinal_ex(context, result, &final_len)) {
+        fprintf(stderr, "CipherFinal failed.\n");
+        free(result);
+        EVP_CIPHER_CTX_free(context);
+        return 0;
+    }
+
+    fwrite(result, 1, final_len, out);
+
+    free(result);
+    EVP_CIPHER_CTX_free(context);
+
+    return 1; // success
+}
+
+int generate_key_iv(unsigned char *key, unsigned char *iv) {
+    if (!RAND_bytes(key, KEY_SIZE)) {
+        fprintf(stderr, "Error generating random key.\n");
+        return 0;
+    }
+
+    if (!RAND_bytes(iv, IV_SIZE)) {
+        fprintf(stderr, "Error generating random IV.\n");
+        return 0;
+    }
+
+    return 1; // success
 }
