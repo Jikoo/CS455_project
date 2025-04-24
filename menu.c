@@ -1,7 +1,16 @@
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <string.h>
 #include <termios.h>
+#include <unistd.h>
+#include <openssl/sha.h>
+#include "security.h"
+
+struct login_details {
+  unsigned char hash[SHA256_DIGEST_LENGTH];
+  unsigned char salt[8];
+};
 
 #define MAX_NOTES 10
 
@@ -38,12 +47,16 @@ void pause_for_input() {
 }
 
 int main(int argc, char *argv[]) {
+
+  printf("yes 0\n");
   // Store the original terminal settings for later restoration.
   tcgetattr(STDIN_FILENO, &originalt);
-  // Turn off echo and awaiting newline for inputs.
+  // Create a copy for modification.
   instant_no_echo = originalt;
+  // Turn off echo and awaiting newline for inputs.
   instant_no_echo.c_lflag &= ~(ICANON | ECHO);
 
+  // Check for cli password parameter.
   char *pwd = 0;
   char opt = 0;
   while ((opt = getopt(argc, argv, "p:")) != -1) {
@@ -56,21 +69,85 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // TODO check if secure store exists, prompt acc creation
+  // TODO would be user-friendly to alert them that entering password will
+  // create datastore on first time setup.
 
   int pwFromPrompt = 0;
-  if (*pwd == 0) {
-    // TODO intake password
-    *pwd = getline(NULL, NULL, stdin);
-    // TODO error handling
+  // If password is not specified, read it.
+  if (pwd == 0) {
+    // Flag for later memory deallocation.
+    pwFromPrompt = 1;
+
+    printf("Please enter your password: ");
+
+    // Turn off echo. No password peeksies!
+    struct termios no_echo = originalt;
+    no_echo.c_lflag &= ~ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &no_echo);
+
+    // Read line of input from user. Note that this allocates memory!
+    unsigned long pwd_len = 0;
+    int read = getline(&pwd, &pwd_len, stdin);
+
+    // Turn echo back on.
+    reset_termios();
+
+    // Error handling for input failure.
+    if (pwd <= 0) {
+      perror("password");
+      return 1;
+    }
   }
 
-  // TODO authenticate (if not creating account?)
+  struct login_details details;
+  int details_len = sizeof(details);
 
-  // TODO should secret still be pwd?
+  // Try to read salt and hash from disk.
+  int fd = open(".login", O_RDONLY);
+  if (fd > 0) {
+    // If the file was opened, we can read from it.
+    int bytesRead = read(fd, &details, details_len);
+  } else {
+    // Otherwise, it probably doesn't exist. Generate a new salt.
+    generate_salt(details.salt);
 
-  while (main_menu(pwd)) {
-    // While exit is not selected, always re-enter main menu after completion.
+    // Get the salted hash.
+    unsigned char *hash = calculate_hash(pwd, details.salt);
+
+    if (hash == 0) {
+      return 1;
+    }
+
+    // Copy the hash into the login details.
+    memcpy(details.hash, hash, SHA256_DIGEST_LENGTH);
+
+    // Free up memory consumed by the hash.
+    free(hash);
+
+    // Open the login file.
+    fd = open(".login", O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+
+    if (fd <= 0) {
+      perror(".login");
+      return 1;
+    }
+
+    // Save to disk.
+    if (write(fd, &details, details_len) != details_len) {
+      perror(".login");
+      return 1;
+    }
+  }
+
+  if (log_in(pwd, details.salt, details.hash)) {
+    // TODO should secret still be pwd?
+    while (main_menu(pwd)) {
+      // While exit is not selected, always re-enter main menu after completion.
+    }
+    printf("\nHave a super day!\n");
+  } else {
+    printf("Access DENIED. Get outta here, you rascal.\n");
+    sleep(1);
   }
 
   if (pwFromPrompt) {

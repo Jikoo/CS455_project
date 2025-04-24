@@ -1,5 +1,6 @@
 #include "security.h"
 #include <openssl/evp.h>
+#include <openssl/sha.h>
 
 // Reqs -lcrypto (and maybe -lssl depending on OS) flags to link openssl
 // Might need -lbsd for arc4rand depending on OS
@@ -10,15 +11,35 @@ void generate_salt(unsigned char ptr[8]) {
   arc4random_buf(ptr, 8);
 }
 
-unsigned char* calculate_hash(unsigned char *input, int len) {
+unsigned char* calculate_hash(char *input, unsigned char salt[8]) {
   // SHA-256 from OpenSSL
   // https://github.com/falk-werner/openssl-example/blob/main/doc/sha256.md
   // Initialize context.
   EVP_MD_CTX *context = EVP_MD_CTX_create();
   EVP_DigestInit(context, EVP_sha256());
 
+  // This is actually unnecessary complexity to introduce a "vulnerability"
+  // EVP_DigestUpdate can just be called subsequently on both pieces of data.
+  unsigned long len1 = strlen(input);
+  unsigned long total = 0;
+
+  // Vulnerability: Overflow protection
+  // Could add a pure math check for signed if we'd prefer
+  if (__builtin_add_overflow(len1, 8, &total)) {
+    return 0;
+  }
+
+  unsigned char *ptr = malloc(total);
+  // Like strncpy, but won't complain about typing and won't stop on \0 in salt.
+  memcpy(ptr, input, len1);
+  // TODO this is probably wrong
+  memcpy(ptr + len1 * sizeof(char), salt, 8);
+
   // Add data.
-  EVP_DigestUpdate(context, input, len);
+  EVP_DigestUpdate(context, ptr, total);
+
+  // Vulnerability resolution: No memory leak; memory is freed.
+  free(ptr);
 
   // Produce finalized result.
   unsigned char result[EVP_MAX_MD_SIZE];
@@ -33,42 +54,22 @@ unsigned char* calculate_hash(unsigned char *input, int len) {
     return 0;
   }
 
-  // Vulnerability: Memory allocation -> leak
-  unsigned char *ptr = malloc(result_length);
+  // Vulnerability: Memory allocation -> leak.
+  // We could require a fixed SHA256_DIGEST_LENGTH array pointer passed in instead, but that would be less spicy.
+  ptr = malloc(result_length);
   memcpy(ptr, result, result_length);
   return ptr;
 }
 
-int log_in(char *password, char *salt, unsigned char hash[SHA256_DIGEST_LENGTH]) {
-  // TODO does this include \0?
-  //  It does, need to deal with that (or not, and treat it as a feature).
-  unsigned long len1 = strlen(password);
-  unsigned long len2 = strlen(salt);
-  unsigned long total = 0;
-  
-  // Vulnerability: Overflow protection
-  // Could add a pure math check for signed if we'd prefer
-  if (__builtin_add_overflow(len1, len2, &total)) {
-    return 0;
-  }
-
-  unsigned char *ptr = malloc(total);
-
-  // Vulnerability: memcpy? TODO look into this, is it actually one?
-  memcpy(ptr, password, len1);
-  memcpy(ptr + len1 * sizeof(char), salt, len2);
-
-  unsigned char *calculated = calculate_hash(ptr, total);
+int log_in(char *password, unsigned char salt[8], unsigned char hash[SHA256_DIGEST_LENGTH]) {
+  unsigned char *calculated = calculate_hash(password, salt);
 
   // If hash is unexpected length, deny attempt.
   if (calculated <= 0) {
     return 0;
   }
 
-  // Vulnerability resolution: No memory leak; memory is freed.
-  free(ptr);
-
-  for (int i = 0; i < total; ++i) {
+  for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
     if (calculated[i] != hash[i]) {
       return 0;
     }
