@@ -85,11 +85,11 @@ int main(int argc, char *argv[]) {
   // TODO would be user-friendly to alert them that entering password will
   // create datastore on first time setup.
   printf("\nWelcome to the Menu System!\n");
-  printf("--------------------------------------------------\n");
+  printf("------------------------------------------------------------------------------------------\n");
   printf("First time setup detected.\n");
   printf("By entering a password, you will initialize the secure datastore.\n");
   printf("Make sure to remember this password, as it will be required to access data in the future.\n");
-  printf("--------------------------------------------------\n");
+  printf("------------------------------------------------------------------------------------------\n");
 
   int pwFromPrompt = 0;
   // If password is not specified, read it.
@@ -259,7 +259,7 @@ void view_menu(char *secret) {
   printf("Decrypting note %d!", note_selection);
 
   // TODO decrypt to STDIO_FILE
-  
+  decrypt_note(folder, note_selection);
 
   pause_for_input();
 }

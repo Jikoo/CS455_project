@@ -136,3 +136,89 @@ void add_notes_in_folder(const char *folder_name, const char *input) {
 
     printf("Encrypted as note %s!", filename);
 }
+
+char *getNoteName(const char *folder_name, int note_number){
+  
+  int index = 0;
+
+  DIR *dir;
+  struct dirent *entry;
+
+  dir = opendir(folder_name);
+  if (dir == NULL) {
+      perror("Could not open folder");
+      return 0;
+  }
+
+  while ((entry = readdir(dir)) != NULL) {
+    if(index == note_number){
+       char *noteName = malloc(strlen(entry->d_name) + 1);
+        if (noteName == NULL) {
+          perror("Failed to allocate memory");
+          closedir(dir);
+          return NULL;
+        }
+        strcpy(noteName, entry->d_name);
+        printf("\nOpening %s\n", noteName);
+        closedir(dir);
+        return noteName;
+    }
+    else{
+      index++;
+    }
+  }
+
+  return NULL;
+}
+
+void decrypt_note(const char *folder_name, int note_number) {
+
+    char *filename = getNoteName(folder_name, note_number);
+    char filePath[512];
+    snprintf(filePath, sizeof(filePath), "%s/%s", folder_name, filename);
+    FILE *noteBook = fopen(filePath, "rb");
+
+    if (!noteBook) {
+        perror("Error opening file");
+        return;
+    }
+
+    unsigned char key[KEY_LENGTH];
+    unsigned char iv[IV_LENGTH];
+    if (!generate_key_iv(key, iv)) {
+        fclose(noteBook);
+        return;
+    }
+
+    int current_note_number;
+    unsigned char decrypted_note[256];
+    int note_found = 0;
+
+    while (fread(&current_note_number, sizeof(current_note_number), 1, noteBook) == 1) {
+        if (current_note_number == note_number) {
+            // Decrypt the note content
+            int len;
+            len = fread(decrypted_note, sizeof(unsigned char), sizeof(decrypted_note), noteBook);
+            decrypted_note[len] = '\0';  // Null terminate the string
+
+            if (!cipher(decrypted_note, len, NULL, key, iv, 0)) {
+                fprintf(stderr, "Decryption failed.\n");
+                fclose(noteBook);
+                return;
+            }
+
+            printf("Decrypted Note #%d: %s\n", note_number, decrypted_note);
+            note_found = 1;
+            break;
+        } else {
+            // Skip this note content if the number doesn't match
+            fseek(noteBook, sizeof(decrypted_note), SEEK_CUR);
+        }
+    }
+
+    if (!note_found) {
+        printf("Note #%d not found.\n", note_number);
+    }
+
+    fclose(noteBook);
+}
