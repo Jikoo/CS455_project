@@ -54,45 +54,6 @@ void add_menu(unsigned char *secret);
 
 void delete_menu();
 
-// moved to data.c+h
-int list_notes();
-
-int is_note(char* filename);
-
-int next_file_number();
-
-char* intake_file_name(unsigned long *len_ptr) {
-  char *line = NULL;
-  int read = getline(&line, len_ptr, stdin);
-
-  // Handle errors getting input.
-  if (read <= 0) {
-    perror("filename");
-    return NULL;
-  }
-
-  // Truncate input to the first invalid character.
-  for (int i = 0; i < *len_ptr; ++i) {
-    if (!isdigit(line[i])) {
-      line[i] = '\0';
-    }
-    *len_ptr = i + 1;
-  }
-
-  if (*len_ptr <= 1) {
-    fprintf(stderr, "Invalid file name! File names are numeric.\n");
-    return NULL;
-  }
-
-  char *note_name = malloc(*len_ptr + 1);
-  note_name[0] = '.';
-  strncpy(note_name + sizeof(char), line, *len_ptr);
-
-  free(line);
-
-  return note_name;
-}
-
 int main(int argc, char *argv[]) {
   // Store the original terminal settings for later restoration.
   tcgetattr(STDIN_FILENO, &originalt);
@@ -275,39 +236,7 @@ void view_menu(unsigned char *secret) {
   }
 
   printf("Decrypting note %s!", note_name + sizeof(char));
-  // TODO decrypt to STDIO_FILE
-  decrypt_note(folder, note_selection);
-
-  // TODO fstat before, lstat after?
-  // Need file size!
-  int fd = open(note_name, O_RDONLY);
-  unsigned long file_len = 0; // TODO read length safely!
-
-  if (fd <= 0) {
-    perror(note_name);
-    free(note_name);
-    return;
-  }
-  if (file_len < 64) {
-    fprintf(stderr, "Note %s corrupted. Please delete.", note_name);
-    free(note_name);
-    return;
-  }
-
-  // Read IV.
-  unsigned char iv[32];
-  int bytes_read = read(fd, iv, 32);
-  if (bytes_read < 32) {
-    perror(note_name);
-    free(note_name);
-    return;
-  }
-
-  // Read encrypted content.
-  unsigned char* contents = malloc(file_len - 32);
-  bytes_read = read(fd, contents, file_len);
-  // TODO verify length
-  cipher(contents, bytes_read, stdout, secret, iv, 0);
+  decrypt_note(secret, folder, note_name);
 
   free(note_name);
   pause_for_input();
@@ -332,13 +261,13 @@ void add_menu(unsigned char *secret) {
 
   // Encrypt to file
   input[strcspn(input, "\n")] = 0;
-  add_notes_in_folder(folder, input);
+  add_notes_in_folder(secret, folder, input);
   pause_for_input();
 }
 
 void delete_menu() {
   printf("Current notes:\n");
-  int count = list_notes();
+  int count = list_notes(folder);
 
   if (count <= 0) {
     printf("\nNothing to delete!\n");
@@ -358,7 +287,7 @@ void delete_menu() {
 
   // TODO delete
 
-  printf("Woah, you selected note %s!", "TODO");
+  printf("Woah, you selected note %s!", note_name + sizeof(char));
 
   pause_for_input();
 }
