@@ -1,7 +1,10 @@
+#include <ctype.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 #include <openssl/sha.h>
@@ -11,8 +14,6 @@ struct login_details {
   unsigned char hash[SHA256_DIGEST_LENGTH];
   unsigned char salt[8];
 };
-
-#define MAX_NOTES 10
 
 static struct termios originalt;
 static struct termios instant_no_echo;
@@ -26,7 +27,24 @@ void add_menu(char *secret);
 void delete_menu(char *secret);
 
 // TODO might want to move this to a separate file, data.c+h or something.
-int list_notes(char *secret);
+int list_notes();
+
+int is_note(char* filename) {
+  if (filename[0] != '.' || !isdigit(filename[1])) {
+    return 0;
+  }
+  for(int i = 2; i <= MAXNAMLEN; ++i) {
+    if (filename[i] == '\0') {
+      return 1;
+    }
+    if (!isdigit(filename[i])) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+int next_file_number();
 
 // Turn echo off and don't wait for newlines.
 void echo_icanon_off() {
@@ -86,13 +104,21 @@ int main(int argc, char *argv[]) {
     // Read line of input from user. Note that this allocates memory!
     unsigned long pwd_len = 0;
     int read = getline(&pwd, &pwd_len, stdin);
+    if (read < 0) {
+      perror("password");
+      free(pwd);
+      return 1;
+    }
 
     // Turn echo back on.
     reset_termios();
 
+    printf("\n");
+
     // Error handling for input failure.
     if (pwd <= 0) {
       perror("password");
+      free(pwd);
       return 1;
     }
   }
@@ -191,38 +217,26 @@ int main_menu(char *secret) {
 
 void view_menu(char *secret) {
   printf("Current notes:\n");
-  int count = list_notes(secret);
+  int count = list_notes();
 
-  echo_icanon_off();
-
-  if (count > 0) {
-    printf("\nPlease select a note to view by number (0 - %d).\n", count - 1);
-
-    char selection;
-    while ((selection = getchar()) < '0' || selection > ('0' + count)) {
-      // printf("Invalid selection %c\n", selection);
-    }
-
-    // TODO content
-    printf("Woah, you selected note %c!", selection);
+  if (count <= 0) {
+    printf("\nNothing to view!\n");
+    pause_for_input();
+    return;
   }
 
+  printf("Which would you like to view?\n");
+
+  // TODO take input
+  printf("Decrypting note %s!", "TODO");
+
+  // TODO decrypt to STDIO_FILE
 
   pause_for_input();
 }
 
 void add_menu(char *secret) {
-  int count = 0; // TODO
-  if (count >= MAX_NOTES) {
-    printf("Oops, too many notes! You can only have %d!\n", MAX_NOTES);
-    pause_for_input();
-    return;
-  }
-
   printf("Please enter the note's content:\n");
-
-  // Just in case.
-  reset_termios();
 
   // TODO may want to use getline instead (but would need to free when done!)
   char buf[256];
@@ -238,39 +252,57 @@ void add_menu(char *secret) {
     return;
   }
 
+  // TODO encrypt to file
 
-  // TODO write to file
-
-  // TODO alert user
-}
-
-void delete_menu(char *secret) {
-  printf("Current notes:\n");
-  int count = list_notes(secret);
-
-  echo_icanon_off();
-
-  if (count <= 0) {
-    pause_for_input();
-    return;
-  }
-
-  printf("\nPlease select a note to delete by number (0 - %d).\n", count - 1);
-
-  char selection;
-  while ((selection = getchar()) < '0' || selection > ('0' + count)) {
-    // printf("Invalid selection %c\n", selection);
-  }
-
-  // TODO content
-  printf("Woah, you selected note %c!", selection);
-
+  printf("Encrypted as note %s!", "TODO");
 
   pause_for_input();
 }
 
-int list_notes(char *secret) {
-  // TODO impl
-  printf("No notes!");
-  return 0;
+void delete_menu(char *secret) {
+  printf("Current notes:\n");
+  int count = list_notes();
+
+  if (count <= 0) {
+    printf("\nNothing to delete!\n");
+    pause_for_input();
+    return;
+  }
+
+  printf("Which would you like to delete?\n");
+
+  // TODO delete
+
+  printf("Woah, you selected note %s!", "TODO");
+
+  pause_for_input();
+}
+
+int list_notes() {
+  DIR *dir = opendir(".");
+  if (dir <= 0) {
+    perror(".");
+    return 0;
+  }
+
+  struct winsize wsize;
+  ioctl(STDOUT_FILENO, TIOCGWINSZ, &wsize);
+
+  int width = wsize.ws_col;
+  int cols = (width - 6) / 8 + 2;
+
+  int count = 0;
+  struct dirent *entry;
+  while ((entry = readdir(dir))) {
+    if (is_note(entry->d_name)) {
+      printf("%-6s", entry->d_name + sizeof(char));
+      ++count;
+      if (count % cols == 0) {
+        printf("\n");
+      } else {
+        printf("  ");
+      }
+    }
+  }
+  return count;
 }
