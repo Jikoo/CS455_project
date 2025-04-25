@@ -105,40 +105,6 @@ char* intake_file_name(unsigned long *len_ptr) {
   return note_name;
 }
 
-int list_notes_in_folder(const char *folder_name) {
-    DIR *dir;
-    struct dirent *entry;
-
-    dir = opendir(folder_name);
-    if (dir == NULL) {
-        perror("Could not open folder");
-        return 0;
-    }
-
-    struct winsize wsize;
-    ioctl(STDOUT_FILENO, TIOCGWINSZ, &wsize);
-
-    int width = wsize.ws_col;
-    int cols = (width - 6) / 8 + 2;
-
-
-    int index = 1;
-
-    printf("Notebook '%s':\n", folder_name);
-    while ((entry = readdir(dir)) != NULL) {
-        // Skip "." and ".."
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-            continue;
-
-        printf("Note %d) %s\n", index, entry->d_name);
-        index++;
-    }
-
-    closedir(dir);
-
-    return index;
-}
-
 void add_notes_in_folder(const unsigned char *key, const char *folder_name, const char *input) {
 
   struct stat st;

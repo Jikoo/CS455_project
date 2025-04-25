@@ -216,7 +216,7 @@ int main_menu(unsigned char *secret) {
 void view_menu(unsigned char *secret) {
   printf("Current notes:\n");
   //int count = list_notes();
-  int count = list_notes_in_folder(folder);
+  int count = list_notes(folder);
 
   if (count <= 0) {
     printf("\nNothing to view!\n");

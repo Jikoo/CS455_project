@@ -10,8 +10,6 @@ int is_note(char *file_name);
 // Returns `NULL` on error, printing issues to `stderr`.
 char* intake_file_name(unsigned long *len_ptr);
 
-int list_notes_in_folder(const char *folder_name);
-
 void add_notes_in_folder(const unsigned char *key, const char *folder_name, const char *input);
 
 void decrypt_note(const unsigned char *key, const char *folder_name, const char *input);
