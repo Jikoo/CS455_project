@@ -83,15 +83,16 @@ char* intake_file_name(unsigned long *len_ptr) {
   }
 
   // Truncate input to the first invalid character.
-  for (int i = 0; i < *len_ptr; ++i) {
+  for (int i = 0; i < read; ++i) {
     if (!isdigit(line[i])) {
       line[i] = '\0';
+      *len_ptr = i + 1;
+      break;
     }
-    *len_ptr = i + 1;
   }
 
   if (*len_ptr <= 1) {
-    fprintf(stderr, "Invalid file name! File names are numeric.\n");
+    fprintf(stderr, "Invalid file name '%s'! File names are numeric.\n", line);
     return NULL;
   }
 
