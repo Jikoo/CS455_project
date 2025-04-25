@@ -19,6 +19,7 @@
 #define MAX_INPUT_SIZE 100
 
 const char *folder = "My Notebook";
+const char *login_storage = ".login";
 
 struct login_details {
   unsigned char hash[SHA256_DIGEST_LENGTH];
@@ -123,10 +124,18 @@ int main(int argc, char *argv[]) {
   int details_len = sizeof(details);
 
   // Try to read salt and hash from disk.
-  int fd = open(".login", O_RDONLY);
+  int fd = open(login_storage, O_RDONLY);
   if (fd > 0) {
     // If the file was opened, we can read from it.
     int bytesRead = read(fd, &details, details_len);
+    if (bytesRead != details_len) {
+      if (bytesRead < 0) {
+        perror(login_storage);
+      } else {
+        fprintf(stderr, "Login details file (%s) is corrupted! Please delete it.", login_storage);
+      }
+      return 1;
+    }
   } else {
     // Otherwise, it probably doesn't exist. Generate a new salt.
     generate_salt(details.salt);
@@ -145,16 +154,16 @@ int main(int argc, char *argv[]) {
     free(hash);
 
     // Open the login file.
-    fd = open(".login", O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    fd = open(login_storage, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
 
     if (fd <= 0) {
-      perror(".login");
+      perror(login_storage);
       return 1;
     }
 
     // Save to disk.
     if (write(fd, &details, details_len) != details_len) {
-      perror(".login");
+      perror(login_storage);
       return 1;
     }
   }
