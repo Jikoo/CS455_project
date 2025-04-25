@@ -261,7 +261,7 @@ void decrypt_note(const unsigned char *key, const char *folder_name, const char 
   }
 
   // Read encrypted content.
-  unsigned char* contents = malloc(file_len - 32);
+  unsigned char* contents = malloc(file_len - IV_SIZE);
   bytes_read = read(fd, contents, file_len);
   // TODO verify length
   // TODO check new output value
