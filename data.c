@@ -171,9 +171,6 @@ void add_notes_in_folder(const unsigned char *key, const char *folder_name, cons
     mkdir(folder_name, S_IRUSR | S_IWUSR | S_IXUSR);
   }
 
-  unsigned char iv[IV_SIZE];
-  generate_iv(iv);
-
   int next_file_num = next_file_name(folder_name);
   char note_name[MAXNAMLEN];
   sprintf(note_name, ".%d", next_file_num);
@@ -195,6 +192,15 @@ void add_notes_in_folder(const unsigned char *key, const char *folder_name, cons
   FILE *noteBook = fopen(file_path, "w");
   if (!noteBook) {
     perror(file_path);
+    return;
+  }
+
+  unsigned char iv[IV_SIZE];
+  generate_iv(iv);
+
+  if (fwrite(iv, sizeof(unsigned char), IV_SIZE, noteBook) != IV_SIZE) {
+    perror(file_path);
+    fclose(noteBook);
     return;
   }
 
