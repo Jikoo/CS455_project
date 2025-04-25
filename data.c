@@ -241,15 +241,15 @@ void decrypt_note(const unsigned char *key, const char *folder_name, const char 
     perror(note_name);
     return;
   }
-  if (file_len < 64) {
+  if (file_len < IV_SIZE * 2) {
     fprintf(stderr, "Note %s corrupted. Please delete.", note_name);
     return;
   }
 
   // Read IV.
-  unsigned char iv[32];
-  int bytes_read = read(fd, iv, 32);
-  if (bytes_read < 32) {
+  unsigned char iv[IV_SIZE];
+  int bytes_read = read(fd, iv, IV_SIZE);
+  if (bytes_read < IV_SIZE) {
     perror(note_name);
     return;
   }
