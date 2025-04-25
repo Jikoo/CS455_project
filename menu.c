@@ -18,7 +18,7 @@
 
 #define MAX_INPUT_SIZE 100
 
-const char *folder = "My Notebook";
+const char *folder = ".notebook";
 const char *login_storage = ".login";
 
 struct login_details {
