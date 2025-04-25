@@ -35,7 +35,10 @@ int is_note(char *file_name) {
 int list_notes(const char *folder_name) {
   DIR *dir = opendir(folder_name);
   if (dir <= 0) {
-    perror(folder_name);
+    // If the directory exists, print errors. Otherwise ignore.
+    if (errno != ENOENT) {
+      perror(folder_name);
+    }
     return 0;
   }
 
@@ -58,6 +61,14 @@ int list_notes(const char *folder_name) {
       }
     }
   }
+
+  // If we aren't at a clean line ending, add a newline anyway.
+  if (count % cols != 0) {
+    printf("\n");
+  }
+
+  closedir(dir);
+
   return count;
 }
 
@@ -128,6 +139,12 @@ int list_notes_in_folder(const char *folder_name) {
 }
 
 void add_notes_in_folder(const unsigned char *key, const char *folder_name, const char *input) {
+
+  struct stat st;
+  if (stat(folder_name, &st) <= 0) {
+    // Create folder with read-write-execute permissions for the user
+    mkdir(folder_name, S_IRUSR | S_IWUSR | S_IXUSR);
+  }
 
   unsigned char iv[IV_SIZE];
   generate_iv(iv);
