@@ -11,9 +11,6 @@
 #include "security.h"
 #include "data.h"
 
-#define KEY_LENGTH 32  // AES-256 = 32 bytes
-#define IV_LENGTH 16   // AES block size
-
 int is_note(char *file_name) {
   // If the file name doesn't start with . and a digit, it's not a note.
   if (file_name[0] != '.' || !isdigit(file_name[1])) {
@@ -132,7 +129,7 @@ int list_notes_in_folder(const char *folder_name) {
 
 void add_notes_in_folder(const unsigned char *key, const char *folder_name, const char *input) {
 
-  unsigned char iv[IV_LENGTH];
+  unsigned char iv[IV_SIZE];
   generate_iv(iv);
 
     char filename[256];
