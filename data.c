@@ -1,8 +1,10 @@
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -105,49 +107,50 @@ char* intake_file_name(unsigned long *len_ptr) {
   return note_name;
 }
 
-void add_notes_in_folder(const unsigned char *key, const char *folder_name, const char *input) {
+int compare_names(const void *val1, const void *val2) {
+  return strncmp(val1, val2, MAXNAMLEN);
+}
 
-  struct stat st;
-  if (stat(folder_name, &st) <= 0) {
-    // Create folder with read-write-execute permissions for the user
-    mkdir(folder_name, S_IRUSR | S_IWUSR | S_IXUSR);
+int next_file_name(const char *folder_name) {
+  DIR *dir = opendir(folder_name);
+  if (dir <= 0) {
+    perror(folder_name);
+    return -1;
   }
 
-  unsigned char iv[IV_SIZE];
-  generate_iv(iv);
-
-    char filename[256];
-
-    struct stat st = {0};
-    if (stat(folder_name, &st) == -1) {
-        mkdir(folder_name, 0700);  // Create folder with read-write-execute permissions for the user
+  char file_names[MAX_NOTES][MAXNAMLEN];
+  int index = 0;
+  struct dirent *entry;
+  while ((entry = readdir(dir)) > 0 && index < MAX_NOTES) {
+    if (!is_note(entry->d_name)) {
+      continue;
     }
+    strncpy(file_names[index], entry->d_name, MAXNAMLEN);
+    ++index;
+  }
 
-    filename[strcspn(filename, "\n")] = 0; // Remove trailing newline if present
+  if (closedir(dir)) {
+    perror(folder_name);
+  }
 
-    printf("Enter filename to save the encrypted note: ");
-    if (fgets(filename, sizeof(filename), stdin) == NULL) {
-        fprintf(stderr, "Failed to read filename.\n");
-        return;
+  qsort(file_names, index, MAXNAMLEN, compare_names);
+
+  char buf[MAXNAMLEN];
+  for (int i = 0; i < index; ++i) {
+    sprintf(buf, ".%d", i);
+    // If the sorted index doesn't match, the number is not in use.
+    // TODO edge case where .000 etc. cause problems
+    // TODO numeric issues
+    if (!strncmp(buf, file_names[i], MAXNAMLEN)) {
+      return i;
     }
+  }
 
-    char filePath[512];
-    snprintf(filePath, sizeof(filePath), "%s/%s", folder_name, filename);
-    FILE *noteBook = fopen(filePath, "wb");
-    if (!noteBook) {
-        perror("Failed to open file for writing");
-        return;
-    }
+  if (index < MAX_NOTES) {
+    return index;
+  }
 
-    if (!cipher((unsigned char *)input, strlen(input), noteBook, key, iv, 1)) {
-        fprintf(stderr, "Encryption failed.\n");
-        fclose(noteBook);
-        return;
-    }
-
-    fclose(noteBook);
-
-    printf("Encrypted as note %s!", filename);
+  return -1;
 }
 
 void combined_path(const char *dir, const char *entry_name, char *result) {
@@ -160,6 +163,54 @@ void combined_path(const char *dir, const char *entry_name, char *result) {
   strcat(result, entry_name);
 }
 
+void add_notes_in_folder(const unsigned char *key, const char *folder_name, const char *input) {
+
+  struct stat st;
+  if (stat(folder_name, &st) <= 0) {
+    // Create folder with read-write-execute permissions for the user
+    mkdir(folder_name, S_IRUSR | S_IWUSR | S_IXUSR);
+  }
+
+  unsigned char iv[IV_SIZE];
+  generate_iv(iv);
+
+  int next_file_num = next_file_name(folder_name);
+  char note_name[MAXNAMLEN];
+  sprintf(note_name, ".%d", next_file_num);
+
+  int len1 = strlen(folder_name);
+  int len2 = strlen(note_name);
+  int total = 0;
+  if (__builtin_add_overflow(len1, len2, &total)
+      || __builtin_add_overflow(total, 1, &total)
+      || total > PATH_MAX) {
+    fprintf(stderr, "Path too long: %s/%s", folder_name, note_name);
+    return;
+  }
+  char file_path[PATH_MAX];
+  combined_path(folder_name, note_name, file_path);
+
+  // Make file accessible only by user.
+  umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+  FILE *noteBook = fopen(file_path, "w");
+  if (!noteBook) {
+    perror(file_path);
+    return;
+  }
+
+  if (!cipher((unsigned char *)input, strlen(input), noteBook, key, iv, 1)) {
+    fprintf(stderr, "Encryption failed.\n");
+    fclose(noteBook);
+    return;
+  }
+
+  if (fclose(noteBook)) {
+    perror(note_name);
+  }
+
+  printf("Encrypted as note %s!", note_name);
+}
+
 void decrypt_note(const unsigned char *key, const char *folder_name, const char *note_name) {
 
   // Resolve combined_path vulnerabilities by checking lengths before calls.
@@ -167,8 +218,8 @@ void decrypt_note(const unsigned char *key, const char *folder_name, const char 
   int len2 = strlen(note_name);
   int total = 0;
   if (__builtin_add_overflow(len1, len2, &total)
-    || __builtin_add_overflow(total, 1, &total)
-    || total > PATH_MAX) {
+      || __builtin_add_overflow(total, 1, &total)
+      || total > PATH_MAX) {
     fprintf(stderr, "Path too long: %s/%s", folder_name, note_name);
     return;
   }
