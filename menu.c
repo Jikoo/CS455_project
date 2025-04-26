@@ -1,7 +1,5 @@
-#include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
-#include <linux/limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,15 +8,14 @@
 #include <termios.h>
 #include <unistd.h>
 #include <openssl/sha.h>
-#include <openssl/rand.h>
-#include <openssl/err.h>
-#include <openssl/evp.h>
 #include "security.h"
 #include "data.h"
 
-#define MAX_INPUT_SIZE 100
+// Define minimum password length.
+#define MIN_PASSWORD_LEN 12
 
-const char *folder = "My Notebook";
+const char *folder = ".notebook";
+const char *login_storage = ".login";
 
 struct login_details {
   unsigned char hash[SHA256_DIGEST_LENGTH];
@@ -33,11 +30,13 @@ void echo_icanon_off() {
   tcsetattr( STDIN_FILENO, TCSANOW, &instant_no_echo);
 }
 
-// Reset termios: Turn echo back on, wait for newlines.
+// Reset terminal to its original state.
+// Turns echo back on and waits for newlines to process input.
 void reset_termios() {
   tcsetattr(STDIN_FILENO, TCSANOW, &originalt);
 }
 
+// Await a keystroke from the user to avoid pushing content out of view.
 void pause_for_input() {
   echo_icanon_off();
   printf("\nPress any key to return to the main menu...");
@@ -46,13 +45,46 @@ void pause_for_input() {
   printf("\n\n\n");
 }
 
+// Display the main menu.
 int main_menu(unsigned char *secret);
 
+// Display the "View Note" menu.
 void view_menu(unsigned char *secret);
 
+// Display the "Add Note" menu.
 void add_menu(unsigned char *secret);
 
+// Display the "Delete Note" menu.
 void delete_menu();
+
+// Accept a line of text as a password from the user.
+int intake_password(char **pwd) {
+  printf("Please enter your password: ");
+
+  // Turn off echo. No password peeksies!
+  struct termios no_echo = originalt;
+  no_echo.c_lflag &= ~ECHO;
+  tcsetattr(STDIN_FILENO, TCSANOW, &no_echo);
+
+  // Read line of input from user. Note that this allocates memory!
+  *pwd = NULL;
+  unsigned long pwd_len = 0;
+  int read = getline(pwd, &pwd_len, stdin);
+
+  if (read < 0 || pwd <= 0) {
+    perror("password");
+    return 1;
+  }
+
+  // Trim trailing newline.
+  (*pwd)[strcspn(*pwd, "\n")] = '\0';
+
+  // Turn echo back on.
+  reset_termios();
+  printf("\n");
+
+  return 0;
+}
 
 int main(int argc, char *argv[]) {
   // Store the original terminal settings for later restoration.
@@ -75,66 +107,67 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // TODO would be user-friendly to alert them that entering password will
-  // create datastore on first time setup.
-  printf("\nWelcome to the Menu System!\n");
-  printf("------------------------------------------------------------------------------------------\n");
-  printf("First time setup detected.\n");
-  printf("By entering a password, you will initialize the secure datastore.\n");
-  printf("Make sure to remember this password, as it will be required to access data in the future.\n");
-  printf("------------------------------------------------------------------------------------------\n");
+  printf("\nWelcome to Secret Notes!\n");
 
-  int pwFromPrompt = 0;
-  // If password is not specified, read it.
-  if (pwd == 0) {
-    // Flag for later memory deallocation.
-    pwFromPrompt = 1;
-
-    printf("Please enter your password: ");
-
-    // Turn off echo. No password peeksies!
-    struct termios no_echo = originalt;
-    no_echo.c_lflag &= ~ECHO;
-    tcsetattr(STDIN_FILENO, TCSANOW, &no_echo);
-
-    // Read line of input from user. Note that this allocates memory!
-    unsigned long pwd_len = 0;
-    int read = getline(&pwd, &pwd_len, stdin);
-    if (read < 0) {
-      perror("password");
-      free(pwd);
-      return 1;
-    }
-
-    // Turn echo back on.
-    reset_termios();
-
-    printf("\n");
-
-    // Error handling for input failure.
-    if (pwd <= 0) {
-      perror("password");
-      free(pwd);
-      return 1;
-    }
-  }
-
+  int pwd_allocated = 0;
   struct login_details details;
   int details_len = sizeof(details);
 
   // Try to read salt and hash from disk.
-  int fd = open(".login", O_RDONLY);
+  int fd = open(login_storage, O_RDONLY);
   if (fd > 0) {
     // If the file was opened, we can read from it.
     int bytesRead = read(fd, &details, details_len);
+    if (bytesRead != details_len) {
+      if (bytesRead < 0) {
+        perror(login_storage);
+      } else {
+        fprintf(stderr, "Login details file (%s) is corrupted! Please delete it.\n", login_storage);
+      }
+      return 1;
+    }
+    if (close(fd)) {
+      perror(login_storage);
+    }
+
+    // If password is not specified, read it.
+    if (pwd == 0) {
+      // Flag for later memory deallocation.
+      pwd_allocated = 1;
+      intake_password(&pwd);
+    }
   } else {
-    // Otherwise, it probably doesn't exist. Generate a new salt.
+    // Otherwise, it probably doesn't exist. New account creation!
+    printf("------------------------------------------------------------------------------------------\n");
+    printf("First time setup detected.\n");
+    printf("By entering a password, you will initialize the secure datastore.\n");
+    printf("Make sure to remember this password, as it will be required to access data in the future.\n");
+    printf("------------------------------------------------------------------------------------------\n");
+
+    // If password is not specified, read it.
+    if (pwd == 0 || strlen(pwd) < MIN_PASSWORD_LEN) {
+      do {
+        // Specify password requirements.
+        printf("Passwords must be at least %d characters in length.\n", MIN_PASSWORD_LEN);
+        printf("Any character you can type is supported, and the longer the password the better.\n");
+        printf("Consider using a passphrase, like \"The quick brown fox jumped over the lazy dog!\"\n");
+        printf("------------------------------------------------------------------------------------------\n");
+        // Flag for later memory deallocation.
+        pwd_allocated = 1;
+        intake_password(&pwd);
+      } while (strlen(pwd) < MIN_PASSWORD_LEN);
+    }
+
+    // Generate a new salt.
     generate_salt(details.salt);
 
     // Get the salted hash.
     unsigned char *hash = calculate_hash(pwd, details.salt);
 
     if (hash == 0) {
+      if (pwd_allocated && &pwd > 0) {
+        free(pwd);
+      }
       return 1;
     }
 
@@ -145,23 +178,28 @@ int main(int argc, char *argv[]) {
     free(hash);
 
     // Open the login file.
-    fd = open(".login", O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    fd = open(login_storage, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
 
     if (fd <= 0) {
-      perror(".login");
+      perror(login_storage);
+      if (pwd_allocated && &pwd > 0) {
+        free(pwd);
+      }
       return 1;
     }
 
     // Save to disk.
     if (write(fd, &details, details_len) != details_len) {
-      perror(".login");
+      perror(login_storage);
       return 1;
     }
   }
 
+  // Convert password to secret.
   unsigned char *secret = log_in(pwd, details.salt, details.hash);
 
-  if (pwFromPrompt) {
+  // Clean up password if possible.
+  if (pwd_allocated && &pwd > 0) {
     free(pwd);
   }
 
@@ -169,13 +207,16 @@ int main(int argc, char *argv[]) {
     while (main_menu(secret)) {
       // While exit is not selected, always re-enter main menu after completion.
     }
-    printf("\nHave a super day!\n");
+
+    printf("\nGoodbye!\n");
+
+    // Free memory allocated for secret.
+    free(secret);
   } else {
-    printf("Access DENIED. Get outta here, you rascal.\n");
+    printf("Access denied. Make sure you have entered your password correctly.\n");
     sleep(1);
   }
 
-  free(secret);
   return 0;
 }
 
@@ -215,11 +256,10 @@ int main_menu(unsigned char *secret) {
 
 void view_menu(unsigned char *secret) {
   printf("Current notes:\n");
-  //int count = list_notes();
-  int count = list_notes_in_folder(folder);
+  int count = list_notes(folder);
 
   if (count <= 0) {
-    printf("\nNothing to view!\n");
+    printf("No notes! Maybe you should write some.\n");
     pause_for_input();
     return;
   }
@@ -235,7 +275,7 @@ void view_menu(unsigned char *secret) {
     return;
   }
 
-  printf("Decrypting note %s!", note_name + sizeof(char));
+  printf("Decrypting note %s!\n", note_name + sizeof(char));
   decrypt_note(secret, folder, note_name);
 
   free(note_name);
@@ -245,23 +285,23 @@ void view_menu(unsigned char *secret) {
 void add_menu(unsigned char *secret) {
   printf("Please enter the note's content:\n");
 
-  // TODO may want to use getline instead (but would need to free when done!)
-  char buf[256];
-  char *input = fgets(buf, 256, stdin);
+  // Read line of input from user. Note that this allocates memory!
+  char *input = NULL;
+  unsigned long pwd_len = 0;
+  int read = getline(&input, &pwd_len, stdin);
 
-  if (input <= 0) {
-    // errors
-    printf("Oops, something went wrong!\n");
-    if (input < 0) {
-      perror("stdio");
-    }
-    pause_for_input();
+  if (read < 0 || input <= 0) {
+    perror("content");
     return;
   }
 
-  // Encrypt to file
   input[strcspn(input, "\n")] = 0;
+
+  // Encrypt to file
   add_notes_in_folder(secret, folder, input);
+
+  free(input);
+
   pause_for_input();
 }
 
@@ -270,7 +310,7 @@ void delete_menu() {
   int count = list_notes(folder);
 
   if (count <= 0) {
-    printf("\nNothing to delete!\n");
+    printf("No notes! Maybe you should write some.\n");
     pause_for_input();
     return;
   }
@@ -285,9 +325,27 @@ void delete_menu() {
     return;
   }
 
-  // TODO delete
+  // Resolve combined_path vulnerabilities by checking lengths before calls.
+  int len1 = strlen(folder);
+  int len2 = strlen(note_name);
+  int total = 0;
+  if (__builtin_add_overflow(len1, len2, &total)
+      || __builtin_add_overflow(total, 1, &total)
+      || total > PATH_MAX) {
+    fprintf(stderr, "Path too long: %s/%s", folder, note_name);
+    return;
+  }
+  char file_path[PATH_MAX];
+  combined_path(folder, note_name, file_path);
 
-  printf("Woah, you selected note %s!", note_name + sizeof(char));
+  printf("Deleting note %s.", note_name + sizeof(char));
 
+  // Vulnerability mitigation: unlink rather than delete.
+  // Filesystem will delete when links reach 0.
+  if (unlink(file_path)) {
+    perror(file_path);
+  }
+
+  free(note_name);
   pause_for_input();
 }

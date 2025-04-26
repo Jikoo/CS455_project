@@ -1,6 +1,10 @@
 #ifndef DATA_H
 #define DATA_H 1
 
+#include <dirent.h>
+
+#define MAX_NOTES 99
+
 int list_notes(const char *folder_name);
 
 int is_note(char *file_name);
@@ -10,7 +14,12 @@ int is_note(char *file_name);
 // Returns `NULL` on error, printing issues to `stderr`.
 char* intake_file_name(unsigned long *len_ptr);
 
-int list_notes_in_folder(const char *folder_name);
+int next_file_name(const char *folder_name);
+
+// Combine a directory and a file name into a file path.
+// Note that this introduces vulnerabilities!
+// Check directory and file name lengths before using!
+void combined_path(const char *dir, const char *entry_name, char *result);
 
 void add_notes_in_folder(const unsigned char *key, const char *folder_name, const char *input);
 
