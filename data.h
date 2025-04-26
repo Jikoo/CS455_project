@@ -3,7 +3,7 @@
 
 #include <dirent.h>
 
-#define MAX_NOTES 100
+#define MAX_NOTES 99
 
 int list_notes(const char *folder_name);
 

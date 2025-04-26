@@ -14,8 +14,8 @@
 #include "data.h"
 
 int is_note(char *file_name) {
-  // If the file name doesn't start with . and a digit, it's not a note.
-  if (file_name[0] != '.' || !isdigit(file_name[1])) {
+  // If the file name doesn't start with . and a non-zero digit, it's not a note.
+  if (file_name[0] != '.' || file_name[1] < '1' || '9' < file_name[1]) {
     return 0;
   }
 
@@ -108,8 +108,23 @@ char* intake_file_name(unsigned long *len_ptr) {
   return note_name;
 }
 
+// Compare note names.
+// Note that this only returns valid results for names that succeed `is_note(char *file_name)`!
 int compare_names(const void *val1, const void *val2) {
-  return strncmp(val1, val2, MAXNAMLEN);
+  int len1 = strlen(val1);
+  int len2 = strlen(val2);
+
+  // If one of the strings is longer, it is a number with more digits.
+  // Because we don't allow preceding 0s, the number with the most digits is the highest.
+  if (len1 < len2) {
+    return -1;
+  }
+  if (len1 > len2) {
+    return 1;
+  }
+
+  // Otherwise, the strings have the same length. Compare character codepoints.
+  return strncmp(val1, val2, len1);
 }
 
 int next_file_name(const char *folder_name) {
@@ -119,6 +134,7 @@ int next_file_name(const char *folder_name) {
     return -1;
   }
 
+  // Read up to MAX_NOTES of note names from note directory.
   char file_names[MAX_NOTES][MAXNAMLEN];
   int index = 0;
   struct dirent *entry;
@@ -130,33 +146,37 @@ int next_file_name(const char *folder_name) {
     ++index;
   }
 
+  // Warn about issues closing directory, if any.
   if (closedir(dir)) {
     perror(folder_name);
   }
 
+  // If there are no files, this is the first.
   if (index == 0) {
-    return 0;
+    return 1;
   }
 
+  // Quicksort file names with our note name comparator.
   qsort(file_names, index, MAXNAMLEN, compare_names);
 
+  // Iterate over numbers 1 - index and check for mismatches.
+  // The first mismatch is an available file number.
   char buf[MAXNAMLEN];
   buf[0] = '.';
-  for (int i = 0; i < index; ++i) {
+  for (int i = 1; i <= index; ++i) {
     sprintf(buf + sizeof(char), "%d", i);
-    // If the sorted index doesn't match, the number is not in use.
-    // TODO edge case where .000 etc. cause problems
-    // TODO numeric issues
-    if (strncmp(buf, file_names[i], MAXNAMLEN)) {
+    if (strncmp(buf, file_names[i - 1], MAXNAMLEN)) {
       return i;
     }
   }
 
+  // If there were no mismatches, the file number is the next free file number.
   if (index < MAX_NOTES) {
-    return index;
+    return index + 1;
   }
 
-  return -1;
+  // If there are no free file numbers, indicate that.
+  return 0;
 }
 
 void combined_path(const char *dir, const char *entry_name, char *result) {
@@ -179,8 +199,9 @@ void add_notes_in_folder(const unsigned char *key, const char *folder_name, cons
 
   int next_file_num = next_file_name(folder_name);
 
-  if (next_file_num < 0) {
-    printf("Unable to find a free note name! Cannot save!\n");
+  if (!next_file_num) {
+    printf("Too many notes present to create another!\n");
+    printf("Only up to %d notes are supported.\n", MAX_NOTES);
     return;
   }
 
@@ -226,7 +247,7 @@ void add_notes_in_folder(const unsigned char *key, const char *folder_name, cons
     perror(note_name);
   }
 
-  printf("Encrypted as note %s!", note_name);
+  printf("Encrypted as note %s!", note_name + sizeof(char));
 }
 
 void decrypt_note(const unsigned char *key, const char *folder_name, const char *note_name) {
