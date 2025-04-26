@@ -265,21 +265,31 @@ void decrypt_note(const unsigned char *key, const char *folder_name, const char 
   char file_path[PATH_MAX];
   combined_path(folder_name, note_name, file_path);
 
-  struct stat stat_val;
-  if (stat(file_path, &stat_val)) {
+  struct stat lstat_val;
+  if (lstat(file_path, &lstat_val)) {
     perror(file_path);
     return;
   }
 
   int fd = open(file_path, O_RDONLY);
 
-  // TODO verify stat results!
-  unsigned long file_len = stat_val.st_size;
-
   if (fd <= 0) {
     perror(file_path);
     return;
   }
+
+  struct stat fstat_val;
+  if (fstat(fd, &fstat_val)) {
+    perror(file_path);
+    return;
+  }
+
+  if (lstat_val.st_ino != fstat_val.st_ino) {
+    fprintf(stderr, "File %s was moved while opening!", file_path);
+    return;
+  }
+
+  unsigned long file_len = fstat_val.st_size;
   if (file_len < IV_SIZE * 2) {
     fprintf(stderr, "Note %s corrupted. Please delete %s\n", note_name + sizeof(char), file_path);
     return;
