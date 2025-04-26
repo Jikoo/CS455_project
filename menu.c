@@ -55,6 +55,30 @@ void add_menu(unsigned char *secret);
 
 void delete_menu();
 
+int intake_password(char *pwd) {
+  printf("Please enter your password: ");
+
+  // Turn off echo. No password peeksies!
+  struct termios no_echo = originalt;
+  no_echo.c_lflag &= ~ECHO;
+  tcsetattr(STDIN_FILENO, TCSANOW, &no_echo);
+
+  // Read line of input from user. Note that this allocates memory!
+  unsigned long pwd_len = 0;
+  int read = getline(&pwd, &pwd_len, stdin);
+
+  if (read < 0 || pwd <= 0) {
+    perror("password");
+    return 1;
+  }
+
+  // Turn echo back on.
+  reset_termios();
+  printf("\n");
+
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
   // Store the original terminal settings for later restoration.
   tcgetattr(STDIN_FILENO, &originalt);
@@ -78,46 +102,14 @@ int main(int argc, char *argv[]) {
 
   // TODO would be user-friendly to alert them that entering password will
   // create datastore on first time setup.
-  printf("\nWelcome to the Menu System!\n");
-  printf("------------------------------------------------------------------------------------------\n");
-  printf("First time setup detected.\n");
-  printf("By entering a password, you will initialize the secure datastore.\n");
-  printf("Make sure to remember this password, as it will be required to access data in the future.\n");
-  printf("------------------------------------------------------------------------------------------\n");
+  printf("\nWelcome to Secret Notes!\n");
 
   int pwFromPrompt = 0;
   // If password is not specified, read it.
   if (pwd == 0) {
     // Flag for later memory deallocation.
     pwFromPrompt = 1;
-
-    printf("Please enter your password: ");
-
-    // Turn off echo. No password peeksies!
-    struct termios no_echo = originalt;
-    no_echo.c_lflag &= ~ECHO;
-    tcsetattr(STDIN_FILENO, TCSANOW, &no_echo);
-
-    // Read line of input from user. Note that this allocates memory!
-    unsigned long pwd_len = 0;
-    int read = getline(&pwd, &pwd_len, stdin);
-    if (read < 0) {
-      perror("password");
-      free(pwd);
-      return 1;
-    }
-
-    // Turn echo back on.
-    reset_termios();
-
-    printf("\n");
-
-    // Error handling for input failure.
-    if (pwd <= 0) {
-      perror("password");
-      free(pwd);
-      return 1;
-    }
+    intake_password(pwd);
   }
 
   struct login_details details;
@@ -132,12 +124,36 @@ int main(int argc, char *argv[]) {
       if (bytesRead < 0) {
         perror(login_storage);
       } else {
-        fprintf(stderr, "Login details file (%s) is corrupted! Please delete it.", login_storage);
+        fprintf(stderr, "Login details file (%s) is corrupted! Please delete it.\n", login_storage);
       }
       return 1;
     }
+    if (close(fd)) {
+      perror(login_storage);
+    }
+
+    // If password is not specified, read it.
+    if (pwd == 0) {
+      // Flag for later memory deallocation.
+      pwFromPrompt = 1;
+      intake_password(pwd);
+    }
   } else {
-    // Otherwise, it probably doesn't exist. Generate a new salt.
+    // Otherwise, it probably doesn't exist. New account creation!
+    printf("------------------------------------------------------------------------------------------\n");
+    printf("First time setup detected.\n");
+    printf("By entering a password, you will initialize the secure datastore.\n");
+    printf("Make sure to remember this password, as it will be required to access data in the future.\n");
+    printf("------------------------------------------------------------------------------------------\n");
+
+    // If password is not specified, read it.
+    if (pwd == 0) {
+      // Flag for later memory deallocation.
+      pwFromPrompt = 1;
+      intake_password(pwd);
+    }
+
+    // Generate a new salt.
     generate_salt(details.salt);
 
     // Get the salted hash.
@@ -311,8 +327,7 @@ void delete_menu() {
 
   // Vulnerability mitigation: unlink rather than delete.
   // Filesystem will delete when links reach 0.
-  if (!unlink(file_path)) {
-    printf("Unable to delete note %s.", note_name + sizeof(char));
+  if (unlink(file_path)) {
     perror(file_path);
   }
 
