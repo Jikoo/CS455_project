@@ -244,7 +244,7 @@ void view_menu(unsigned char *secret) {
     return;
   }
 
-  printf("Decrypting note %s!", note_name + sizeof(char));
+  printf("Decrypting note %s!\n", note_name + sizeof(char));
   decrypt_note(secret, folder, note_name);
 
   free(note_name);

@@ -95,6 +95,7 @@ char* intake_file_name(unsigned long *len_ptr) {
 
   if (*len_ptr <= 1) {
     fprintf(stderr, "Invalid file name '%s'! File names are numeric.\n", line);
+    free(line);
     return NULL;
   }
 
@@ -133,15 +134,20 @@ int next_file_name(const char *folder_name) {
     perror(folder_name);
   }
 
+  if (index == 0) {
+    return 0;
+  }
+
   qsort(file_names, index, MAXNAMLEN, compare_names);
 
   char buf[MAXNAMLEN];
+  buf[0] = '.';
   for (int i = 0; i < index; ++i) {
-    sprintf(buf, ".%d", i);
+    sprintf(buf + sizeof(char), "%d", i);
     // If the sorted index doesn't match, the number is not in use.
     // TODO edge case where .000 etc. cause problems
     // TODO numeric issues
-    if (!strncmp(buf, file_names[i], MAXNAMLEN)) {
+    if (strncmp(buf, file_names[i], MAXNAMLEN)) {
       return i;
     }
   }
@@ -172,6 +178,12 @@ void add_notes_in_folder(const unsigned char *key, const char *folder_name, cons
   }
 
   int next_file_num = next_file_name(folder_name);
+
+  if (next_file_num < 0) {
+    printf("Unable to find a free note name! Cannot save!\n");
+    return;
+  }
+
   char note_name[MAXNAMLEN];
   sprintf(note_name, ".%d", next_file_num);
 
@@ -233,22 +245,22 @@ void decrypt_note(const unsigned char *key, const char *folder_name, const char 
   combined_path(folder_name, note_name, file_path);
 
   struct stat stat_val;
-  if (stat(file_path, &stat_val) <= 0) {
+  if (stat(file_path, &stat_val)) {
     perror(file_path);
     return;
   }
 
-  int fd = open(note_name, O_RDONLY);
+  int fd = open(file_path, O_RDONLY);
 
   // TODO verify stat results!
   unsigned long file_len = stat_val.st_size;
 
   if (fd <= 0) {
-    perror(note_name);
+    perror(file_path);
     return;
   }
   if (file_len < IV_SIZE * 2) {
-    fprintf(stderr, "Note %s corrupted. Please delete.", note_name);
+    fprintf(stderr, "Note %s corrupted. Please delete %s\n", note_name, file_path);
     return;
   }
 
@@ -256,7 +268,7 @@ void decrypt_note(const unsigned char *key, const char *folder_name, const char 
   unsigned char iv[IV_SIZE];
   int bytes_read = read(fd, iv, IV_SIZE);
   if (bytes_read < IV_SIZE) {
-    perror(note_name);
+    fprintf(stderr, "Only read %d of IV\n", bytes_read);
     return;
   }
 
