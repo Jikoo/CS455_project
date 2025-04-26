@@ -294,9 +294,28 @@ void delete_menu() {
     return;
   }
 
-  // TODO delete
+  // Resolve combined_path vulnerabilities by checking lengths before calls.
+  int len1 = strlen(folder);
+  int len2 = strlen(note_name);
+  int total = 0;
+  if (__builtin_add_overflow(len1, len2, &total)
+      || __builtin_add_overflow(total, 1, &total)
+      || total > PATH_MAX) {
+    fprintf(stderr, "Path too long: %s/%s", folder, note_name);
+    return;
+  }
+  char file_path[PATH_MAX];
+  combined_path(folder, note_name, file_path);
 
-  printf("Woah, you selected note %s!", note_name + sizeof(char));
+  printf("Deleting note %s.", note_name + sizeof(char));
 
+  // Vulnerability mitigation: unlink rather than delete.
+  // Filesystem will delete when links reach 0.
+  if (!unlink(file_path)) {
+    printf("Unable to delete note %s.", note_name + sizeof(char));
+    perror(file_path);
+  }
+
+  free(note_name);
   pause_for_input();
 }
