@@ -281,7 +281,7 @@ void decrypt_note(const unsigned char *key, const char *folder_name, const char 
     return;
   }
   if (file_len < IV_SIZE * 2) {
-    fprintf(stderr, "Note %s corrupted. Please delete %s\n", note_name, file_path);
+    fprintf(stderr, "Note %s corrupted. Please delete %s\n", note_name + sizeof(char), file_path);
     return;
   }
 
@@ -293,11 +293,16 @@ void decrypt_note(const unsigned char *key, const char *folder_name, const char 
     return;
   }
 
+  file_len -= IV_SIZE;
   // Read encrypted content.
-  unsigned char* contents = malloc(file_len - IV_SIZE);
+  unsigned char* contents = malloc(file_len);
   bytes_read = read(fd, contents, file_len);
-  // TODO verify length
-  // TODO check new output value
+
+  if (bytes_read != file_len) {
+    printf("Unable to read note fully! File may be corrupted.\n");
+    printf("Consider creating a new note with any contents and deleting %s\n", file_path);
+  }
+
   cipher(contents, bytes_read, stdout, key, iv, 0);
 
 }
