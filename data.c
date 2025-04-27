@@ -1,8 +1,10 @@
+// Resources used:
+// Adam's labs from CS-355
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <linux/limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,8 +15,13 @@
 #include "security.h"
 #include "data.h"
 
+// Check if a file name is a note name.
+//
+// `file_name`: the name to check
+// Author: Adam
 int is_note(char *file_name) {
   // If the file name doesn't start with . and a non-zero digit, it's not a note.
+  // Checking index 1 is safe because index 0 must be '.', meaning at worst 1 is '\0'.
   if (file_name[0] != '.' || file_name[1] < '1' || '9' < file_name[1]) {
     return 0;
   }
@@ -34,6 +41,10 @@ int is_note(char *file_name) {
   return 1;
 }
 
+// List notes in a folder.
+//
+// `folder_name`: path of directory containing note files
+// Author: Adam, Alex (merged two different versions)
 int list_notes(const char *folder_name) {
   DIR *dir = opendir(folder_name);
   if (dir <= 0) {
@@ -44,21 +55,27 @@ int list_notes(const char *folder_name) {
     return 0;
   }
 
+  // Get window width to determine max entries displayable in a row.
   struct winsize wsize;
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &wsize);
 
   int width = wsize.ws_col;
-  int cols = (width - 6) / 8 + 2;
+  // Initial column + remainder / characters per column
+  int cols = 1 + (width - 6) / 8;
 
   int count = 0;
   struct dirent *entry;
   while ((entry = readdir(dir))) {
     if (is_note(entry->d_name)) {
+      // Assume that the average file name will not exceed 6 characters.
+      // Our own limit is 3 because MAX_NOTES is 99.
       printf("%-6s", entry->d_name + sizeof(char));
       ++count;
       if (count % cols == 0) {
+        // End of row, next row.
         printf("\n");
       } else {
+        // Space out next entry so it is clearly separate.
         printf("  ");
       }
     }
@@ -69,11 +86,18 @@ int list_notes(const char *folder_name) {
     printf("\n");
   }
 
+  // Clean up and finish.
   closedir(dir);
 
   return count;
 }
 
+// Get a file name from user input.
+// Note: Allocates memory to store result.
+// Returns `NULL` on error, printing issues.
+//
+// `len_ptr`: A pointer that will be filled with the accepted input length
+// Author: Adam
 char* intake_file_name(unsigned long *len_ptr) {
   char *line = NULL;
   int read = getline(&line, len_ptr, stdin);
@@ -93,16 +117,27 @@ char* intake_file_name(unsigned long *len_ptr) {
     }
   }
 
+  // If the input does not start with a number, complain.
   if (*len_ptr <= 1) {
-    fprintf(stderr, "Invalid file name '%s'! File names are numeric.\n", line);
+    printf("Invalid file name! File names are numeric.\n");
     free(line);
     return NULL;
   }
 
+  // Otherwise, allocate memory to store just what we need of it.
   char *note_name = malloc(*len_ptr + 1);
+
+  if (note_name == NULL) {
+    perror("note name");
+    free(line);
+    return NULL;
+  }
+
+  // .<input>
   note_name[0] = '.';
   strncpy(note_name + sizeof(char), line, *len_ptr);
 
+  // Free original input allocation.
   free(line);
 
   return note_name;
@@ -127,6 +162,12 @@ int compare_names(const void *val1, const void *val2) {
   return strncmp(val1, val2, len1);
 }
 
+// Find the next unused file name number.
+// File names are always numeric to prevent information leakage via titles.
+// Returns the next file number or `0` if files `1` through `MAX_NOTES` exist.
+//
+// `folder_name`: path of directory containing note files
+// Author: Adam
 int next_file_name(const char *folder_name) {
   DIR *dir = opendir(folder_name);
   if (dir <= 0) {
@@ -179,6 +220,13 @@ int next_file_name(const char *folder_name) {
   return 0;
 }
 
+// Combine a directory and a file name into a file path.
+// Note: This introduces vulnerabilities! Check directory and file name lengths before using!
+//
+// `dir`: the path of the base directory
+// `entry_name`: the name of the file in the directory
+// `result`: A pointer to where the result is to be placed
+// Author: Adam
 void combined_path(const char *dir, const char *entry_name, char *result) {
   // Vulnerability: strcpy
   strcpy(result, dir);
@@ -189,25 +237,38 @@ void combined_path(const char *dir, const char *entry_name, char *result) {
   strcat(result, entry_name);
 }
 
-void add_notes_in_folder(const unsigned char *key, const char *folder_name, const char *input) {
+// Encrypt and save a new note.
+//
+// `key`: the key to use for encryption
+// `folder_name`: path of directory containing note files
+// `input`: the plaintext note content
+// Author: Alex
+void add_note(const unsigned char *key, const char *folder_name, const char *input) {
 
+  // Ensure that folder exists.
   struct stat st;
   if (stat(folder_name, &st) <= 0) {
     // Create folder with read-write-execute permissions for the user
     mkdir(folder_name, S_IRUSR | S_IWUSR | S_IXUSR);
   }
 
+  // TODO ensure folder is not a symlink?
+
+  // Get the next file number.
   int next_file_num = next_file_name(folder_name);
 
+  // If no file number is available, finish.
   if (!next_file_num) {
     printf("Too many notes present to create another!\n");
     printf("Only up to %d notes are supported.\n", MAX_NOTES);
     return;
   }
 
+  // Set up note name.
   char note_name[MAXNAMLEN];
   sprintf(note_name, ".%d", next_file_num);
 
+  // Resolve combined_path vulnerabilities by checking lengths before calls.
   int len1 = strlen(folder_name);
   int len2 = strlen(note_name);
   int total = 0;
@@ -223,26 +284,32 @@ void add_notes_in_folder(const unsigned char *key, const char *folder_name, cons
   // Make file accessible only by user.
   umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
   FILE *noteBook = fopen(file_path, "w");
+
+  // If file cannot be opened, print.
   if (!noteBook) {
     perror(file_path);
     return;
   }
 
+  // Generate a new IV for this file.
   unsigned char iv[IV_SIZE];
   generate_iv(iv);
 
+  // Write the IV to the top of the file, stopping on error.
   if (fwrite(iv, sizeof(unsigned char), IV_SIZE, noteBook) != IV_SIZE) {
     perror(file_path);
     fclose(noteBook);
     return;
   }
 
+  // Encrypt the input.
   if (!cipher((unsigned char *)input, strlen(input), noteBook, key, iv, 1)) {
-    fprintf(stderr, "Encryption failed.\n");
+    printf("Encryption as note %s failed.\n", note_name + sizeof(char));
     fclose(noteBook);
     return;
   }
 
+  // Close file and warn if closing fails.
   if (fclose(noteBook)) {
     perror(note_name);
   }
@@ -250,8 +317,13 @@ void add_notes_in_folder(const unsigned char *key, const char *folder_name, cons
   printf("Encrypted as note %s!", note_name + sizeof(char));
 }
 
-void decrypt_note(const unsigned char *key, const char *folder_name, const char *note_name) {
-
+// Decrypt and print a new note.
+//
+// `key`: the key to use for decryption
+// `folder_name`: path of directory containing note files
+// `input`: the name of the note file
+// Author: Adam
+void read_note(const unsigned char *key, const char *folder_name, const char *note_name) {
   // Resolve combined_path vulnerabilities by checking lengths before calls.
   int len1 = strlen(folder_name);
   int len2 = strlen(note_name);
@@ -265,30 +337,36 @@ void decrypt_note(const unsigned char *key, const char *folder_name, const char 
   char file_path[PATH_MAX];
   combined_path(folder_name, note_name, file_path);
 
+  // Get lstat of file.
   struct stat lstat_val;
   if (lstat(file_path, &lstat_val)) {
     perror(file_path);
     return;
   }
 
+  // Open file.
   int fd = open(file_path, O_RDONLY);
 
+  // Handle failure to open file.
   if (fd <= 0) {
     perror(file_path);
     return;
   }
 
+  // Get fstat of file.
   struct stat fstat_val;
   if (fstat(fd, &fstat_val)) {
     perror(file_path);
     return;
   }
 
+  // Ensure that file is the intended target file.
   if (lstat_val.st_ino != fstat_val.st_ino) {
     fprintf(stderr, "File %s was moved while opening!", file_path);
     return;
   }
 
+  // Get file size from stat data.
   unsigned long file_len = fstat_val.st_size;
   if (file_len < IV_SIZE * 2) {
     fprintf(stderr, "Note %s corrupted. Please delete %s\n", note_name + sizeof(char), file_path);
@@ -303,16 +381,20 @@ void decrypt_note(const unsigned char *key, const char *folder_name, const char 
     return;
   }
 
+  // Remove IV from remaining content.
   file_len -= IV_SIZE;
+
   // Read encrypted content.
   unsigned char* contents = malloc(file_len);
   bytes_read = read(fd, contents, file_len);
 
+  // If unable to read fully, warn about possible data loss.
   if (bytes_read != file_len) {
     printf("Unable to read note fully! File may be corrupted.\n");
-    printf("Consider creating a new note with any contents and deleting %s\n", file_path);
+    printf("Consider creating a new note with any recovered contents and deleting %s.\n", note_name + sizeof(char));
   }
 
+  // Decrypt contents and print.
   cipher(contents, bytes_read, stdout, key, iv, 0);
 
 }
