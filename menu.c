@@ -2,6 +2,7 @@
 // Adam's labs from CS-355
 
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -165,8 +166,8 @@ int main(int argc, char *argv[]) {
       pwd_allocated = 1;
       intake_password(&pwd);
     }
-  } else {
-    // Otherwise, it probably doesn't exist. New account creation!
+  } else if (errno == ENOENT) {
+    // If the file doesn't exist, do first-time setup.
     printf("------------------------------------------------------------------------------------------\n");
     printf("First time setup detected.\n");
     printf("By entering a password, you will initialize the secure datastore.\n");
@@ -176,6 +177,10 @@ int main(int argc, char *argv[]) {
     // If password is not specified, read it.
     if (pwd == 0 || strlen(pwd) < MIN_PASSWORD_LEN) {
       do {
+        // Free password if allocated.
+        if (pwd_allocated && &pwd > 0) {
+          free(pwd);
+        }
         // Specify password requirements.
         printf("Passwords must be at least %d characters in length.\n", MIN_PASSWORD_LEN);
         printf("Any character you can type is supported, and the longer the password the better.\n");
