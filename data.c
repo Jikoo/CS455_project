@@ -282,8 +282,10 @@ void add_note(const unsigned char *key, const char *folder_name, const char *inp
   combined_path(folder_name, note_name, file_path);
 
   // Make file accessible only by user.
-  umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+  __mode_t existing_mask = umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
   FILE *noteBook = fopen(file_path, "w");
+  // Reset umask after file creation.
+  umask(existing_mask);
 
   // If file cannot be opened, print.
   if (!noteBook) {
