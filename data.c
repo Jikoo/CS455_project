@@ -1,3 +1,4 @@
+// Authors: Adam and Alex
 // Resources used:
 // Adam's labs from CS-355
 
@@ -272,9 +273,6 @@ void add_note(const unsigned char *key, const char *folder_name, const char *inp
     // Create folder with read-write-execute permissions for the user
     mkdir(folder_name, S_IRUSR | S_IWUSR | S_IXUSR);
   }
-
-  // TODO ensure folder is not a symlink?
-  is_symlink(folder_name);
 
   // Get the next file number.
   int next_file_num = next_file_name(folder_name);
