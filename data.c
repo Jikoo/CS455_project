@@ -237,6 +237,27 @@ void combined_path(const char *dir, const char *entry_name, char *result) {
   strcat(result, entry_name);
 }
 
+int is_symlink(const char *path) {
+    struct stat path_stat;
+
+    if (lstat(path, &path_stat) != 0) {
+        perror("lstat");
+        return 0; // error
+    }
+
+    // Check it's a directory
+    if (!S_ISDIR(path_stat.st_mode)) {
+        return 0; // not a directory
+    }
+
+    // Check it's NOT a symlink
+    if (S_ISLNK(path_stat.st_mode)) {
+        return 0; // is a symlink
+    }
+
+    return 1; // it's a real directory!
+}
+
 // Encrypt and save a new note.
 //
 // `key`: the key to use for encryption
@@ -253,6 +274,7 @@ void add_note(const unsigned char *key, const char *folder_name, const char *inp
   }
 
   // TODO ensure folder is not a symlink?
+  is_symlink(folder_name);
 
   // Get the next file number.
   int next_file_num = next_file_name(folder_name);
